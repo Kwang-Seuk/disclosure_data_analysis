@@ -8,8 +8,8 @@ import seaborn as sns
 
 def descriptive_statistics(df: DataFrame) -> DataFrame:
     df_descript = df.describe()
-    df_descript.loc["skew"] = df.skew()
-    df_descript.loc["kurt"] = df.kurt()
+    df_descript["skew"] = df.skew()
+    df_descript["kurt"] = df.kurt()
     return df_descript
 
 def descriptive_statistics_groupby(
