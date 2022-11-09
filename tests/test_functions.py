@@ -3,13 +3,11 @@ import sys
 sys.path.append("..")
 import pandas as pd
 import numpy as np
+import json
 from scipy.stats import describe
 from pandas.testing import assert_frame_equal, assert_series_equal
 from matplotlib import pyplot as plt
-from src.dda import (
-    descriptive_statistics as dstat,
-    train_test_data_prep as dprep,
-)
+from src.dda import descriptive_statistics as dstat
 
 
 def test_concat_skew_kurt_result_should_return_as_expected():
@@ -40,9 +38,6 @@ def test_concat_skew_kurt_result_should_return_as_expected():
 
 
 def test_descript_groupby_result_should_return_as_expected():
-    import pandas as pdi
-    import json
-
     data = {
         "Grp": ["A", "A", "B", "B"],
         "X1": [1, 1, 1, 1],
@@ -52,3 +47,19 @@ def test_descript_groupby_result_should_return_as_expected():
     df_grp_descript = (
         df.groupby("Grp").agg(["mean", "std", "min", "max", "skew"]).unstack()
     )
+
+
+def test_rawdata_csv_to_json_result_should_return_as_expected():
+    csv_data = pd.read_csv(
+        "/home/kjeong/kj_python/myrepos/b510/disclosure_data_analysis/tests/testcode_csv.csv",
+        sep=",",
+    )
+    json_data = csv_data.to_json(orient="values")
+    json_data
+
+#{"SN":1,"X1":1,"X2":2},{"SN":2,"X1":1,"X2":2},{"SN":3,"X1":1,"X2":2}
+
+
+    expected = {"SN": [1, 2, 3], "X1": [1, 1, 1], "X2": [2, 2, 2]}
+
+    assert json_data == expected
