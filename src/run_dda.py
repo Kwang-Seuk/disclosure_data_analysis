@@ -6,26 +6,15 @@ from sklearn.inspection import permutation_importance
 from mlxtend.feature_selection import SequentialFeatureSelector as sfs
 from mlxtend.plotting import plot_sequential_feature_selection
 from xgboost import XGBRegressor, plot_tree
-from src.dda import (
-    descriptive_statistics as dstat,
-    descriptive_statistics_groupby as gdstat,
-    mean_std_boxplots,
-    train_test_data_prep as dprep,
-)
 
 ## Load data
 data_dir = "/home/kjeong/kj_python/rawdata/disclosure_data/"
 data_file = "rawdata_analysis_employment.csv"
 df = pd.read_csv(data_dir + data_file, index_col=0)
 
-## Descriptive and simple statistics
-df_desc = df.drop(["Regions", "Codes"], axis=1)
-gdstat_df = gdstat(df_desc, 'Yr_disclosure')
-gdstat_df.to_csv(data_dir + "gdstat.csv")
-gdstat_df
-
-
 ## Data preparation for modelling
+
+# Data preparation for model development
 df_model = df.drop(["Yr_disclosure", "Regions", "Codes"], axis=1)
 y = df_model["Employment_rates"]
 X = df_model.drop(["Employment_rates"], axis=1)
@@ -33,13 +22,10 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, train_size=268, shuffle=False
 )
 
+# Forward input feature selection test
 xgbm_sfs = XGBRegressor(
     objective="reg:squarederror",
-    n_estimators=1000,
-    gamma=1,
-    min_child_weight=1,
-    colsample_bytree=1,
-    max_depth=5,
+    n_estimators=100,
     tree_method="gpu_hist",
 )
 
@@ -55,14 +41,21 @@ sfs_res = sfs(
 
 sfs_res = sfs_res.fit(X_train, y_train)
 
-xgbm.fit(
+xgbm_sfs.fit(
     X_train,
     y_train,
     eval_set=[(X_train, y_train), (X_test, y_test)],
     eval_metric=["rmse"],
     verbose=100,
-    early_stopping_rounds=400,
 )
+
+fig = plot_sequential_feature_selection(sfs.get_metric_dict(), kind='std_dev')
+plt.title('Sequential forward Selection')
+plt.rcParams["figure.figsize"] = (15,15)
+plt.grid()
+plt.show()
+
+
 
 # plt.rcParams["figure.figsize"] = (50,50)
 # plot_tree(xgbm, num_trees = xgbm.get_booster().best_iteration)
