@@ -54,12 +54,12 @@ def test_rawdata_csv_to_json_result_should_return_as_expected():
         "/home/kjeong/kj_python/myrepos/b510/disclosure_data_analysis/tests/testcode_csv.csv",
         sep=",",
     )
-    json_data = csv_data.to_json(orient="values")
-    json_data
+    json_data = csv_data.to_json(orient="records")
 
-#{"SN":1,"X1":1,"X2":2},{"SN":2,"X1":1,"X2":2},{"SN":3,"X1":1,"X2":2}
-
-
-    expected = {"SN": [1, 2, 3], "X1": [1, 1, 1], "X2": [2, 2, 2]}
+    expected = (
+        {"SN": 1, "X1": 1, "X2": 2},
+        {"SN": 2, "X1": 1, "X2": 2},
+        {"SN": 3, "X1": 1, "X2": 2},
+    )
 
     assert json_data == expected
