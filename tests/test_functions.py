@@ -9,7 +9,7 @@ from pandas.testing import assert_frame_equal, assert_series_equal
 from matplotlib import pyplot as plt
 from src.dda import (
     descriptive_statistics as dstat,
-    create_df_filled_with_means,
+    create_df_mip_with_means_and_itp_data,
     min_max_linspace_for_mip
 )
 
@@ -197,3 +197,49 @@ def test_replacing_a_column_data_with_another_df_column_data_should_result_as_ex
     }
     expected_X2_df = pd.DataFrame(expected_X2_data)
     assert_frame_equal(df_mip_itp_X2, expected_X2_df)
+
+def test_creating_mip_dataframe_should_result_as_expected():
+    data = {
+        "X1": [1, 2, 3, 4, 5, 6],
+        "X2": [4, 5, 6, 7, 8, 9],
+        "X3": [7, 8, 9, 6, 7, 8]
+    }
+    df = pd.DataFrame(data)
+
+    df_itp = min_max_linspace_for_mip(df, 3)
+    df_mip = create_df_mip_with_means_and_itp_data(df, df_itp)
+
+    expected = {
+        "X1": [1.0, 3.5, 6.0],
+        "X2": [4.0, 6.5, 9.0],
+        "X3": [6.0, 7.5, 9.0],
+        "X1_means": [3.5, 3.5, 3.5],
+        "X2_means": [6.5, 6.5, 6.5],
+        "X3_means": [7.5, 7.5, 7.5]
+    }
+    df_expected = pd.DataFrame(expected)
+
+    assert_frame_equal(df_mip, df_expected)
+
+def test_creating_mip_input_data_by_alternating_itp_and_means_should_result_as_expected():
+    mip_input_data = {
+        "X1": [1, 2, 3],
+        "X2": [7, 8, 9],
+        "X3": [4, 5, 6],
+        "X1_means": [2.5, 2.5, 2.5],
+        "X2_means": [7.5, 7.5, 7.5],
+        "X3_means": [5.5, 5.5, 5.5]
+    }
+    df_mip = pd.DataFrame(mip_input_data)
+
+    X = df_mip.iloc[:,0]
+    X_var = X.columns + "_means"
+    X
+
+
+    for i in range(len(df_mip) / 2 - 1):
+        X = df_mip.iloc[:,i]
+        X_var = X.columns
+
+        X_means_tmp = df_mip.filer(regex = 
+

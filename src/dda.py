@@ -70,14 +70,6 @@ def compute_vif_for_X(df: DataFrame) -> DataFrame:
     ]
     return vif
 
-def create_df_filled_with_means(df: DataFrame) -> DataFrame:
-    df_mean = pd.DataFrame(df.mean(), columns = ["mean"])
-    
-    df_mip = pd.DataFrame(columns = list(df.columns), index = range(len(df)))
-    for col_name in df_mean.index:
-        df_mip[col_name] = df_mean["mean"][col_name]
-    return df_mip
-
 
 def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
     
@@ -104,8 +96,25 @@ def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
         df_interpolated[col_name] = temp_linspace
     return df_interpolated
 
-def creating_mip_data_per_input_feature(df: DataFrame) -> DataFrame:
-    df_mip = create_df_filled_with_means(df)
+def create_df_mip_with_means_and_itp_data(
+    df: DataFrame,
+    df_interpolated: DataFrame
+) -> DataFrame:
+    df_mean_tmp = pd.DataFrame(df.mean(), columns = ["mean"])
+    df_means = pd.DataFrame(columns = list(df.columns), index = range(len(df_interpolated)))
+    for col_name in df_mean_tmp.index:
+        df_means[col_name] = df_mean_tmp["mean"][col_name]
+    df_means = df_means.add_suffix("_means")
+    df_mip = df_interpolated.join(df_means)
+    return df_mip
+
+
+## The below functions are not currently available (under revision)
+def creating_mip_data_per_input_feature(
+    df: DataFrame,
+    df_interpolated: DataFrame
+) -> DataFrame:
+    df_mip = create_df_mip_with_means_and_itp_data(df, df_interpolated)
     for col_name in df.columns:
         df_mip_itp = df_mip.copy()
         df_mip_itp.loc[:, col_name] = df.loc[:, col_name]
