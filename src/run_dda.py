@@ -1,42 +1,249 @@
+## Loading modules
+import sys
+sys.path.append("..")
+
+# Data manipulation modules
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from math import floor, ceil
+
+# ML data preprecessing modules
 from sklearn.model_selection import train_test_split
 from sklearn.inspection import permutation_importance
 from mlxtend.feature_selection import SequentialFeatureSelector as sfs
 from mlxtend.plotting import plot_sequential_feature_selection
-from hyperopt import hp
-from xgboost import XGBRegressor, plot_tree
+from statsmodels.stats.outliers_influence import variance_inflation_factor as vif
 from BorutaShap import BorutaShap
 from sklearn.base import clone
 
+# XGBoost development moduels
+from hyperopt import hp, STATUS_OK, Trials, fmin, tpe
+from sklearn.model_selection import cross_val_score
+from xgboost import XGBRegressor, plot_tree
+from src.dda import compute_vif_for_X, hyper_parameters_objective
+
 ## Load data
-data_dir = "/home/kjeong/kj_python/rawdata/disclosure_data/"
-data_file = "rawdata_analysis_employment.csv"
+data_dir = "/home/kjeong/kj_python/rawdata/disclosure_data/student_dropout_rate/"
+data_file = "rawdata_analysis_stud_dropout_rate.csv"
 df = pd.read_csv(data_dir + data_file, index_col=0)
 
 ## Data preparation for modelling
 
 # Data preparation for model development
-df_model = df.drop(["Yr_disclosure", "Regions", "Codes"], axis=1)
-y = df_model["Employment_rates"]
-X = df_model.drop(["Employment_rates"], axis=1)
+df_model = df.drop(["Yr_disclosure", "Regions", "Codes", "Number_of_StudR", "Number_of_StudE"], axis=1)
+y = df_model["Stud_dropout_rate"]
+X = df_model.drop(["Stud_dropout_rate"], axis=1)
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, train_size=268, shuffle=False
 )
 
-## Preliminary model training
+
+## Preliminary model creation and input feature seleciton (BorutaShap)
 
 xgbm_pre = XGBRegressor(
     objective="reg:squarederror",
-    n_estimators=1000,
-    gamma=1,
-    min_child_weight=1,
-    colsample_bytree=1,
-    max_depth=5,
+    max_depth=10,
+    tree_method="gpu_hist",
 )
 
-xgbm_pre.fit(
+Feature_Selector = BorutaShap(
+    model=xgbm_pre,
+    importance_measure="shap",
+    classification=False,
+    percentile=100,
+    pvalue=0.05,
+)
+
+Feature_Selector.fit(
+    X=X_train,
+    y=y_train,
+    n_trials=100,
+    sample=False,
+    train_or_test="train",
+    normalize=True,
+    verbose=False
+)
+
+
+features_to_remove = Feature_Selector.features_to_remove
+X_train_boruta_shap = X_train.drop(columns=features_to_remove)
+X_test_boruta_shap = X_test.drop(columns=features_to_remove)
+
+
+## Hyper-parameters optimization
+
+hpspace = {
+    "max_depth": hp.quniform("max_depth", 3, 10, 1),
+    "gamma": hp.uniform("gamma", 1, 9),
+    "reg_alpha": hp.quniform("reg_alpha", 0, 0.5, 0.1),
+    "reg_lambda": hp.uniform("reg_lambda", 0, 1),
+    "eta": hp.uniform("eta", 0.01, 0.2),
+    "min_child_weight": hp.quniform("min_child_weight", 0, 2, 0.1),
+    "subsample": hp.uniform("subsample", 0.5, 1),
+    "colsample_bytree": hp.uniform("colsample_bytree", 0.1, 1),
+    "scale_pos_weight": hp.uniform("scale_pos_weight", 0.1, 1),
+}
+
+def hyper_parameters_objective(hpspace: dict):
+    xgb_hpo = XGBRegressor(
+        objective="reg:squarederror",
+        n_estimators=200,
+        max_depth=int(hpspace["max_depth"]),
+        gamma=hpspace["gamma"],
+        reg_alpha=hpspace["reg_alpha"],
+        reg_lambda=hpspace["reg_lambda"],
+        eta=hpspace["eta"],
+        min_child_weight=hpspace["min_child_weight"],
+        subsample=hpspace["subsample"],
+        colsample_bytree=hpspace["colsample_bytree"],
+        scale_pos_weight=hpspace["scale_pos_weight"],
+        tree_method="gpu_hist",
+        n_jobs=-1,
+    )
+    best_score = cross_val_score(
+        xgb_hpo, X_train, y_train, scoring="neg_mean_squared_error", cv=10
+    ).mean()
+    loss = 1 - best_score
+    return loss
+
+best = fmin(
+    fn=hyper_parameters_objective,
+    space=hpspace,
+    max_evals=50,
+    rstate=np.random.default_rng(777),
+    algo=tpe.suggest,
+)
+print(best)
+
+## Production model development with selected input features
+## and optimzied hyper-parameters setting
+
+for key, value in best.items():
+    best['max_depth']=int(best['max_depth'])
+    #best['n_estimators']=int(best['n_estimators'])
+
+xgb_model_production = XGBRegressor(
+    objective ='reg:squarederror',
+    n_estimators=1000,
+    n_jobs = -1,
+    **best,
+    tree_method = "gpu_hist")    
+
+xgb_model_production.fit(
+    X_train_boruta_shap,
+    y_train,
+    eval_set=[(X_train_boruta_shap, y_train), (X_test_boruta_shap, y_test)],
+    eval_metric=["rmse"],
+    verbose=100,
+    early_stopping_rounds=400,
+)
+
+## Modelling resuts
+
+# Best tree illustration
+plt.rcParams["figure.figsize"] = (15, 15)
+plt.rcParams['figure.dpi'] = 600
+plot_tree(xgb_model_production, num_trees=xgb_model_production.get_booster().best_iteration)
+plt.savefig("test_tree_stud_dropout_rate.png", dpi='figure')
+#plt.show()
+
+# Input feature selection result
+Feature_Selector.plot(figsize=(30, 10), which_features="all")
+plt.savefig("input_feature_selection_stud_dropout_rate.png", dpi='figure')
+
+# Prediction results (train / test data)
+tr_pred = xgb_model_production.predict(X_train_boruta_shap)
+plt.rcParams["figure.figsize"] = (15, 15)
+plt.scatter(y_train, tr_pred)
+
+tst_pred = xgb_model_production.predict(X_test_boruta_shap)
+plt.rcParams["figure.figsize"] = (15, 15)
+plt.scatter(y_test, tst_pred)
+
+plt.savefig("prediction_results_stud_dropout_rate.png", dpi='figure')
+
+# Output response to gradual changes of input features 
+mip_input = pd.read_csv(data_dir + "employ_test_mip_input.csv")
+#mip_output = pd.read_csv(data_dir + "employ_test_mip_output.csv")
+mip_pred = xgb_model_production.predict(mip_input)
+plt.rcParams["figure.figsize"] = (15, 15)
+plt.plot(mip_pred)
+mip_pred_res = pd.DataFrame(mip_pred)
+mip_pred_res.to_csv(data_dir + "mip_pred_res.csv")
+plt.savefig("mip_res_stud_dropout_rate.png", dpi='figure')
+
+# Feature importance test for the selected input features
+xgb_model_production.feature_importances_
+feature_names = np.array(X_train_boruta_shap.columns)
+sorted_idx = xgb_model_production.feature_importances_.argsort()
+plt.figure(figsize=(15, 10))
+plt.barh(
+    feature_names[sorted_idx], xgb_model_production.feature_importances_[sorted_idx]
+)
+plt.xlabel("XGBoost Feature Importance")
+plt.savefig("feature_importance_stud_dropout_rate.png", dpi = 'figure')
+
+# Feature importance (permutation) test for the selected input features
+perm_importance = permutation_importance(xgb_model_production, X_train_boruta_shap, y_train)
+sorted_idx = perm_importance.importances_mean.argsort()
+plt.figure(figsize=(15, 10))
+plt.barh(
+    feature_names[sorted_idx], perm_importance.importances_mean[sorted_idx]
+)
+plt.xlabel("Permutation Importance")
+plt.savefig("feature_importance_permuted_stud_dropout_rate.png", dpi = 'figure')
+
+
+
+
+data_dir = "/home/kjeong/kj_python/rawdata/disclosure_data/employment_rate/"
+input_mip_data_file = "employment_mip_horizontal_input.csv"
+res_mip_data_file = "employment_mip_horizontal_res.csv"
+mip_input_df = pd.read_csv(data_dir + input_mip_data_file, index_col=0)
+mip_res_df = pd.read_csv(data_dir + res_mip_data_file, index_col = 0)
+
+no_input_feat = len(mip_input_df.columns)
+
+params = {
+    "font.size": 13.0,
+    "figure.figsize": (15, 10),
+    "axes.grid": True,
+    "figure.dpi": 75
+}
+plt.rcParams.update(params)
+
+col_list = list(mip_input_df.columns)
+subplot_titles = ["{}".format(col) for col in col_list]
+
+fig = plt.figure()
+for i in range(no_input_feat):
+    ax = fig.add_subplot(5, 5, 1 + i, sharey = ax)
+    ax.plot(mip_input_df.iloc[:, i], mip_res_df.iloc[:, i], 'r-')
+    ax.set_title(subplot_titles[i])
+fig.tight_layout()
+
+
+
+fig = plt.figure()
+for i in range(10):
+    ax = fig.add_subplot(5, 5, 1 + i)
+    ax.plot([1,2,3,4,5], [10,5,10,5,10], 'r-')
+
+
+    #"figure.dpi": 300
+
+
+
+
+
+
+
+
+
+## The below is miscellenous or not used at the moment.
+
+asciixgbm_pre.fit(
     X_train,
     y_train,
     eval_set=[(X_train, y_train), (X_test, y_test)],
@@ -45,31 +252,14 @@ xgbm_pre.fit(
     early_stopping_rounds=400,
 )
 
-plt.rcParams["figure.figsize"] = (50, 50)
+plt.rcParams["figure.figsize"] = (15, 15)
 plot_tree(xgbm_pre, num_trees=xgbm_pre.get_booster().best_iteration)
 plt.show()
 
-## Shapley index based feature importance check (BorutaShap)
-
-model_BS = clone(xgbm_pre)
-Feature_Selector = BorutaShap(model = model_BS,
-                              importance_measure = 'shap',
-                              classification = True,
-                              percentile = 100,
-                              pvalue = 0.05)
-
-Feature_Selector.fit(X=X_train, y=y_train,
-                     n_trials = 100,
-                     sample = False,
-                     train_or_test = 'train',
-                     normalize = True,
-                     verbose = False
-                     )
-
-Feature_Selector.plot(figsize=(30, 10), which_features = 'all')
 
 
 ## Forward input feature selection test (hereafter new XGB created)
+## (This code section can be used in future.)
 
 # Input feature exploration by sequential_feature_selector
 xgbm_sfs = XGBRegressor(
@@ -91,7 +281,9 @@ sfs_res = sfs(
 sfs_res = sfs_res.fit(X_train, y_train)
 
 # Plot negative RMSE against the number of input features used in the test
-fig = plot_sequential_feature_selection(sfs_res.get_metric_dict(), kind="std_dev")
+fig = plot_sequential_feature_selection(
+    sfs_res.get_metric_dict(), kind="std_dev"
+)
 plt.title("Sequential forward Selection")
 plt.rcParams["figure.figsize"] = (30, 20)
 plt.grid()
@@ -126,7 +318,7 @@ X_tr_sel = X_train.iloc[:, feat_cols]
 X_tst_sel = X_test.iloc[:, feat_cols]
 
 # New XGBoost model with the selected input features
-xgbm_sel_if = XGBRegressor(
+xgbm_pre= XGBRegressor(
     objective="reg:squarederror",
     n_estimators=1000,
     gamma=1,
@@ -136,9 +328,9 @@ xgbm_sel_if = XGBRegressor(
 )
 
 xgbm_sel_if.fit(
-    X_tr_sel,
+    X_train_boruta_shap,
     y_train,
-    eval_set=[(X_tr_sel, y_train), (X_tst_sel, y_test)],
+    eval_set=[(X_train_boruta_shap, y_train), (X_test_boruta_shap, y_test)],
     eval_metric=["rmse"],
     verbose=100,
     early_stopping_rounds=400,
@@ -150,73 +342,10 @@ plt.show()
 
 ## Prediction results (train / test data)
 
-tr_sel_pred = xgbm_sel_if.predict(X_tr_sel)
+tr_sel_pred = xgbm_sel_if.predict(X_train_boruta_shap)
 plt.rcParams["figure.figsize"] = (15, 15)
 plt.scatter(y_train, tr_sel_pred)
 
-tst_sel_pred = xgbm_sel_if.predict(X_tst_sel)
+tst_sel_pred = xgbm_sel_if.predict(X_test_boruta_shap)
 plt.rcParams["figure.figsize"] = (15, 15)
 plt.scatter(y_test, tst_sel_pred)
-
-## Feature importance tests
-
-# Feature importance test for the selected input features
-xgbm_sel_if.feature_importances_
-feature_names = np.array(X_tr_sel.columns)
-sorted_idx = xgbm_sel_if.feature_importances_.argsort()
-plt.figure(figsize=(15, 10))
-plt.barh(feature_names[sorted_idx], xgbm_sel_if.feature_importances_[sorted_idx])
-plt.xlabel("XGBoost Feature Importance")
-
-# Feature importance (permutation) test for the selected input features
-perm_importance = permutation_importance(xgbm_sel_if, X_tr_sel, y_train)
-sorted_idx = perm_importance.importances_mean.argsort()
-plt.figure(figsize=(15, 10))
-plt.barh(
-    feature_names[sorted_idx], perm_importance.importances_mean[sorted_idx]
-)
-plt.xlabel("Permutation Importance")
-
-
-## The code below is incomplete
-
-## Hyper-parameters optimization
-
-# Setting up hyper-parameter space
-hpspace = {
-    "max_depth": hp.quniform("max_depth", 3, 15, 1),
-    "n_estimators": 180,
-    "gamma": hp.uniform("gamma", 1, 9),
-    "reg_lambda": hp.uniform("reg_lambda", 0, 1),
-    "eta": hp.uniform("eta", 0.01, 0.2),
-    "min_child_weight": hp.quniform("min_child_weight", 0, 2, 0.1),
-    "subsample": hp.uniform("subsample", 0.5, 1),
-    "colsample_bytree": hp.uniform("colsample_bytree", 0.5, 1),
-    "reg_alpha": hp.quniform("reg_alpha", 0, 0.5, 0.1),
-    "scale_pos_weight": hp.uniform("scale_pos_weight", 0, 1),
-}
-
-
-def objective(params):
-    params = {
-        "max_depth": int(params["max_depth"]),
-        "eta": params["eta"],
-        "min_child_weight": params["min_child_weight"],
-        "subsample": params["subsample"],
-        "reg_alpha": params["reg_alpha"],
-        "colsample_bytree": params["colsample_bytree"],
-        "scale_pos_weight": params["scale_pos_weight"],
-    }
-    xgb_hpo = XGBRegressor(
-        objective="reg:squarederror",
-        n_estimators=200,
-        tree_method="gpu_hist",
-        n_jobs=-1,
-        **params,
-        early_stopping_rounds=100
-    )
-    best_score = cross_val_score(
-        xgb_hpo, X_tr_sel, y_train, scoring="neg_mean_squared_error", cv=10
-    ).mean()
-    loss = 1 - best_score
-    return loss
