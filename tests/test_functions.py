@@ -9,6 +9,7 @@ from pandas.testing import assert_frame_equal, assert_series_equal
 from matplotlib import pyplot as plt
 from src.dda import (
     descriptive_statistics as dstat,
+    create_df_filled_with_means,
     min_max_linspace_for_mip
 )
 
@@ -94,14 +95,15 @@ def test_create_n_rows_df_filled_with_colname_means_from_df_should_result_as_exp
 
     df = pd.DataFrame(data)
     df_mean = pd.DataFrame(df.mean(), columns = ["mean"])
-    df_mean
     
     index_n = len(df.columns)
     column_titles = list(df.columns)
 
-    df_mip = pd.DataFrame(columns = column_titles, index = range(index_n * 2))
+    df_mip = pd.DataFrame(columns = list(df.columns), index = range(len(df)))
     for col_name in df_mean.index:
         df_mip[col_name] = df_mean["mean"][col_name]
+
+    df_mip
 
     expected = {
         "X1": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
@@ -119,6 +121,9 @@ def test_linear_interpolation_between_min_max_should_result_as_expected():
     }
     df = pd.DataFrame(data)
     df_interpolated_four = min_max_linspace_for_mip(df, 4)
+
+    df_interpolated_four
+
     expected_interval_four = {
         "X1": [1.0, 4.0, 7.0, 10.0],
         "X2": [11.0, 14.0, 17.0, 20.0]
@@ -165,3 +170,30 @@ def test_interpolated_data_replacement_should_result_as_expected():
     df_expected = pd.DataFrame(expected)
 
     assert_frame_equal(df_mip, df_expected)
+
+def test_replacing_a_column_data_with_another_df_column_data_should_result_as_expected():
+    data = {
+        "X1": [10, 20, 30],
+        "X2": [70, 80, 90]
+    }
+    df = pd.DataFrame(data)
+
+    df_mip = create_df_filled_with_means(df)
+    for col_name in df.columns:
+        df_mip_itp = df_mip.copy()
+        df_mip_itp.loc[:, col_name] = df.loc[:, col_name]
+        vars()["df_mip_itp_" + col_name] = df_mip_itp
+
+    expected_X1_data = {
+        "X1": [10, 20, 30],
+        "X2": [80.0, 80.0, 80.0]
+    }
+    expected_X1_df = pd.DataFrame(expected_X1_data)
+    assert_frame_equal(df_mip_itp_X1, expected_X1_df)
+
+    expected_X2_data = {
+        "X1": [20.0, 20.0, 20.0],
+        "X2": [70, 80, 90]
+    }
+    expected_X2_df = pd.DataFrame(expected_X2_data)
+    assert_frame_equal(df_mip_itp_X2, expected_X2_df)
