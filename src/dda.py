@@ -10,6 +10,7 @@ from statsmodels.tools.tools import add_constant
 from xgboost import XGBRegressor, plot_tree
 from sklearn.model_selection import cross_val_score
 
+
 def descriptive_statistics(df: DataFrame) -> DataFrame:
     df_descript = df.describe()
     col_name = list(df_descript.columns)
@@ -61,18 +62,17 @@ def mean_std_boxplots(
 
 
 def compute_vif_for_X(df: DataFrame) -> DataFrame:
-    #df_vif = df.drop(["Yr_disclosure", "Regions", "Codes"], axis=1)
+    # df_vif = df.drop(["Yr_disclosure", "Regions", "Codes"], axis=1)
     vif = pd.DataFrame()
     vif["features"] = df.columns
     vif["VIF"] = [
-        variance_inflation_factor(df.values, i)
-        for i in range(df.shape[1])
+        variance_inflation_factor(df.values, i) for i in range(df.shape[1])
     ]
     return vif
 
 
 def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
-    
+
     minmax_df = pd.DataFrame(df.nunique(), columns=["nunique"])
     minmax_df["min"] = df.min()
     minmax_df["max"] = df.max()
@@ -80,28 +80,49 @@ def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
 
     df_interpolated = pd.DataFrame()
     for idx, col_name in enumerate(minmax_df.index):
-
-        # If the number of unique values of a variable is > linnum,
-        # make values equals to linnum, otherwise number of values = nunique
-        if minmax_df["nunique"][col_name] > interval:
-            temp_linspace = np.linspace(
-                minmax_df["min"][col_name], minmax_df["max"][col_name], interval
-            )
-        else:
-            temp_linspace = np.linspace(
-                minmax_df["min"][col_name],
-                minmax_df["max"][col_name],
-                minmax_df["nunique"][col_name],
-            )
-        df_interpolated[col_name] = temp_linspace
+        temp_linspace = np.linspace(
+            minmax_df["min"][col_name],
+            minmax_df["max"][col_name],
+            interval
+        )
+        df_interpolated[col_name] = temp_linspace    
     return df_interpolated
 
+#def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
+#
+#    minmax_df = pd.DataFrame(df.nunique(), columns=["nunique"])
+#    minmax_df["min"] = df.min()
+#    minmax_df["max"] = df.max()
+#    minmax_df["dtypes"] = df.dtypes
+#
+#    df_interpolated = pd.DataFrame()
+#    for idx, col_name in enumerate(minmax_df.index):
+#
+#        # If the number of unique values of a variable is > linnum,
+#        # make values equals to linnum, otherwise number of values = nunique
+#        if minmax_df["nunique"][col_name] > interval:
+#            temp_linspace = np.linspace(
+#                minmax_df["min"][col_name],
+#                minmax_df["max"][col_name],
+#                interval,
+#            )
+#        else:
+#            temp_linspace = np.linspace(
+#                minmax_df["min"][col_name],
+#                minmax_df["max"][col_name],
+#                minmax_df["nunique"][col_name],
+#            )
+#        df_interpolated[col_name] = temp_linspace
+#    return df_interpolated
+
 def create_df_mip_with_means_and_itp_data(
-    df: DataFrame,
-    df_interpolated: DataFrame
+    df: DataFrame, df_interpolated: DataFrame
 ) -> DataFrame:
-    df_mean_tmp = pd.DataFrame(df.mean(), columns = ["mean"])
-    df_means = pd.DataFrame(columns = list(df.columns), index = range(len(df_interpolated)))
+
+    df_mean_tmp = pd.DataFrame(df.mean(), columns=["mean"])
+    df_means = pd.DataFrame(
+        columns=list(df.columns), index=range(len(df_interpolated))
+    )
     for col_name in df_mean_tmp.index:
         df_means[col_name] = df_mean_tmp["mean"][col_name]
     df_means = df_means.add_suffix("_means")
@@ -109,41 +130,63 @@ def create_df_mip_with_means_and_itp_data(
     return df_mip
 
 
+def run_mip_analysis_with_df_mip(df_mip: DataFrame, model: str, data_dir: str) -> None:
+
+    X_grp_no = int(len(df_mip.columns) / 2)
+    X_itp = df_mip.iloc[:, 0:X_grp_no]
+    X_means = df_mip.iloc[:, X_grp_no:]
+    
+    # store data for further plot creation
+    df_mip_res = pd.DataFrame()
+    X_itp_for_plot = X_itp.copy()
+
+    for i in range(X_grp_no):
+        # make an mip data set for prediction
+        X_itp_tmp = X_itp.copy()
+        X_means_tmp = X_means.copy()
+        X_mip = X_means_tmp.drop(X_means_tmp.columns[i], axis=1)
+        X_itp_series = X_itp_tmp.iloc[:, i]
+        X_mip = X_mip.merge(X_itp_series.to_frame(), left_index = True, right_index = True)
+
+        # prediction with the created mip data and store the result to df_mip_res
+        mip_col_name = X_mip.columns[-1]
+        mip_pred = model.predict(X_mip)
+        df_mip_res[mip_col_name] = mip_pred.tolist()
+
+        # save the X_mip as a csv file with its itp column name
+        X_mip["res"] = mip_pred.tolist()
+        X_mip.to_csv(data_dir + "x_mip_" + mip_col_name + ".csv") 
+        #vars()["X_mip_" + mip_col_name] = X_mip
+
+    return X_itp_for_plot, df_mip_res
+
+def plot_mip_analysis_results(
+    df_mip_input: DataFrame,
+    df_mip_res: DataFrame
+):
+
+    no_input_feat = len(df_mip_input.columns)
+    params = {
+        "font.size": 13.0,
+        "axes.titlesize": 'medium',
+        "figure.figsize": (15, 10),
+        "axes.grid": True,
+        #"figure.dpi": 75
+    }
+    plt.rcParams.update(params)
+    
+    col_list = list(df_mip_input.columns)
+    subplot_titles = ["{}".format(col) for col in col_list]
+
+    fig = plt.figure()
+    for i in range(no_input_feat):
+        ax = fig.add_subplot(5, 5, 1 + i)
+        ax.plot(df_mip_input.iloc[:, i], df_mip_res.iloc[:, i], 'r-')
+        ax.set_title(subplot_titles[i])
+    fig.tight_layout()
+
+
 ## The below functions are not currently available (under revision)
-def creating_mip_data_per_input_feature(
-    df: DataFrame,
-    df_interpolated: DataFrame
-) -> DataFrame:
-    df_mip = create_df_mip_with_means_and_itp_data(df, df_interpolated)
-    for col_name in df.columns:
-        df_mip_itp = df_mip.copy()
-        df_mip_itp.loc[:, col_name] = df.loc[:, col_name]
-        vars()["df_mip_itp_" + col_name] = df_mip_itp
-
-
-
-def hyper_parameters_objective(hpspace: dict, X_train: DataFrame, y_train: DataFrame):
-    xgb_hpo = XGBRegressor(
-        objective="reg:squarederror",
-        n_estimators=200,
-        max_depth=int(hpspace["max_depth"]),
-        gamma=hpspace["gamma"],
-        reg_alpha=hpspace["reg_alpha"],
-        reg_lambda=hpspace["reg_lambda"],
-        eta=hpspace["eta"],
-        min_child_weight=hpspace["min_child_weight"],
-        subsample=hpspace["subsample"],
-        colsample_bytree=hpspace["colsample_bytree"],
-        scale_pos_weight=hpspace["scale_pos_weight"],
-        tree_method="gpu_hist",
-        n_jobs=-1,
-    )
-    best_score = cross_val_score(
-        xgb_hpo, X_train, y_train, scoring="neg_mean_squared_error", cv=10
-    ).mean()
-    loss = 1 - best_score
-    return loss
-
 
 def minmax_table(df: DataFrame, linnum: int, rdn_num: int, out_dir: str):
 

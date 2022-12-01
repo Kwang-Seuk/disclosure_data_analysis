@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from math import floor, ceil
+from pandas.core.frame import DataFrame
 
 # ML data preprecessing modules
 from sklearn.model_selection import train_test_split
@@ -21,22 +22,42 @@ from sklearn.base import clone
 from hyperopt import hp, STATUS_OK, Trials, fmin, tpe
 from sklearn.model_selection import cross_val_score
 from xgboost import XGBRegressor, plot_tree
-from src.dda import compute_vif_for_X, hyper_parameters_objective
+from src.dda import (
+    compute_vif_for_X,
+    min_max_linspace_for_mip,
+    create_df_mip_with_means_and_itp_data,
+    run_mip_analysis_with_df_mip,
+    plot_mip_analysis_results
+)
+
 
 ## Load data
-data_dir = "/home/kjeong/kj_python/rawdata/disclosure_data/student_dropout_rate/"
-data_file = "rawdata_analysis_stud_dropout_rate.csv"
+
+data_dir = "/home/kjeong/kj_python/rawdata/disclosure_data/lms_data_2020/"
+data_file = "Input_rawdata_noNaN.csv"
+df = pd.read_csv(data_dir + data_file)
+
+data_dir = "/home/kjeong/kj_python/rawdata/disclosure_data/employment_rate/"
+data_file = "rawdata_analysis_employment.csv"
 df = pd.read_csv(data_dir + data_file, index_col=0)
 
 ## Data preparation for modelling
 
 # Data preparation for model development
-df_model = df.drop(["Yr_disclosure", "Regions", "Codes", "Number_of_StudR", "Number_of_StudE"], axis=1)
-y = df_model["Stud_dropout_rate"]
-X = df_model.drop(["Stud_dropout_rate"], axis=1)
+df_model = df.copy()
+df_model = df.drop(["Male", "Female", "SN"], axis=1)
+
+df_model = df.drop(["Yr_disclosure", "Regions", "Codes"], axis=1)
+#"Number_of_StudR", "Number_of_StudE"
+y = df_model["Credits"]
+X = df_model.drop(["Credits"], axis=1)
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, train_size=268, shuffle=False
+    X, y, shuffle=True
 )
+X_train = X_train.dropna()
+X_test = X_test.dropna()
+y_train = y_train.dropna()
+y_test = y_test.dropna()
 
 
 ## Preliminary model creation and input feature seleciton (BorutaShap)
@@ -69,7 +90,7 @@ Feature_Selector.fit(
 features_to_remove = Feature_Selector.features_to_remove
 X_train_boruta_shap = X_train.drop(columns=features_to_remove)
 X_test_boruta_shap = X_test.drop(columns=features_to_remove)
-
+print(len(X_train_boruta_shap.columns))
 
 ## Hyper-parameters optimization
 
@@ -88,7 +109,7 @@ hpspace = {
 def hyper_parameters_objective(hpspace: dict):
     xgb_hpo = XGBRegressor(
         objective="reg:squarederror",
-        n_estimators=200,
+        n_estimators=1000,
         max_depth=int(hpspace["max_depth"]),
         gamma=hpspace["gamma"],
         reg_alpha=hpspace["reg_alpha"],
@@ -136,14 +157,26 @@ xgb_model_production.fit(
     eval_set=[(X_train_boruta_shap, y_train), (X_test_boruta_shap, y_test)],
     eval_metric=["rmse"],
     verbose=100,
-    early_stopping_rounds=400,
+    #early_stopping_rounds=400,
 )
+
+
+
+
+## Most Influencing Parameters (MIP) analysis
+
+df_interpolated = min_max_linspace_for_mip(X_train_boruta_shap, 21)
+df_mip = create_df_mip_with_means_and_itp_data(X_train_boruta_shap, df_interpolated)
+df_mip_input, df_mip_res = run_mip_analysis_with_df_mip(df_mip, xgb_model_production, data_dir)
+plot_mip_analysis_results(df_mip_input, df_mip_res)
+
+
 
 ## Modelling resuts
 
 # Best tree illustration
 plt.rcParams["figure.figsize"] = (15, 15)
-plt.rcParams['figure.dpi'] = 600
+plt.rcParams['figure.dpi'] = 600 
 plot_tree(xgb_model_production, num_trees=xgb_model_production.get_booster().best_iteration)
 plt.savefig("test_tree_stud_dropout_rate.png", dpi='figure')
 #plt.show()
@@ -162,16 +195,6 @@ plt.rcParams["figure.figsize"] = (15, 15)
 plt.scatter(y_test, tst_pred)
 
 plt.savefig("prediction_results_stud_dropout_rate.png", dpi='figure')
-
-# Output response to gradual changes of input features 
-mip_input = pd.read_csv(data_dir + "employ_test_mip_input.csv")
-#mip_output = pd.read_csv(data_dir + "employ_test_mip_output.csv")
-mip_pred = xgb_model_production.predict(mip_input)
-plt.rcParams["figure.figsize"] = (15, 15)
-plt.plot(mip_pred)
-mip_pred_res = pd.DataFrame(mip_pred)
-mip_pred_res.to_csv(data_dir + "mip_pred_res.csv")
-plt.savefig("mip_res_stud_dropout_rate.png", dpi='figure')
 
 # Feature importance test for the selected input features
 xgb_model_production.feature_importances_
@@ -193,7 +216,6 @@ plt.barh(
 )
 plt.xlabel("Permutation Importance")
 plt.savefig("feature_importance_permuted_stud_dropout_rate.png", dpi = 'figure')
-
 
 
 
