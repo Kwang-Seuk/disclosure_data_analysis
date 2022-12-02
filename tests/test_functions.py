@@ -9,7 +9,7 @@ from scipy.stats import describe, kurtosis
 from pandas.testing import assert_frame_equal, assert_series_equal
 from matplotlib import pyplot as plt
 from src.dda import (
-    descriptive_statistics as dstat,
+    descriptive_statistics_groupby as dstatg,
     create_df_mip_with_means_and_itp_data,
     min_max_linspace_for_mip,
 )
@@ -21,13 +21,7 @@ def test_descript_groupby_result_should_return_as_expected():
         "X1": [1, 2, 3, 4, 7, 8, 9, 10],
     }
     df = pd.DataFrame(data)
-
-    df_grp_descript = (
-        df.groupby("Grp")
-        .agg(["mean", "std", "min", "max", "skew", kurtosis])
-        .unstack()
-    )
-    df_grp_descript
+    df_grp_stats = dstatg(df, "Grp")
 
     result = {
         "name": "null",
