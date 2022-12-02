@@ -9,28 +9,16 @@ from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
 from xgboost import XGBRegressor, plot_tree
 from sklearn.model_selection import cross_val_score
-
-
-def descriptive_statistics(df: DataFrame) -> DataFrame:
-    df_descript = df.describe()
-    col_name = list(df_descript.columns)
-    for i in col_name:
-        df_descript.index["skew"][col_name] = df.skew()
-        df_descript.index["kurt"][col_name] = df.kurt()
-    return df_descript
-
+from scipy.stats import kurtosis
 
 def descriptive_statistics_groupby(
     df: DataFrame,
     group_var: str,
-    remove_var1: str,
-    remove_var2: str,
 ) -> DataFrame:
 
-    df_tmp = df.drop([remove_var1, remove_var2], axis=1)
     df_grp_descript = (
-        df_tmp.groupby(group_var)
-        .agg(["mean", "std", "min", "max", "skew"])
+        df.groupby(group_var)
+        .agg(["mean", "std", "min", "max", "skew", kurtosis])
         .unstack()
     )
     return df_grp_descript
