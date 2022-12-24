@@ -1,15 +1,62 @@
+## Loading modules -----------------------------------------------------------
+# The belows are the modules used in this function code. 
+## ---------------------------------------------------------------------------
+
+
+# OS control
+import sys
+sys.path.append("..")
+
+# Fundamental data manipulation
 import pandas as pd
 import numpy as np
-import seaborn as sns
 from pandas.core.frame import DataFrame
+from pandas.core.series import Series
+from scipy.stats import kurtosis
+
+# Illustration
 from matplotlib import pyplot as plt
-from sklearn.model_selection import train_test_split
 import seaborn as sns
+
+# ML data preprocessing modules
+from sklearn.model_selection import train_test_split
+from sklearn.inspection import permutation_importance
+from mlxtend.feature_selection import SequentialFeatureSelector as sfs
+from mlxtend.plotting import plot_sequential_feature_selection
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
+from BorutaShap import BorutaShap
+from sklearn.base import clone
+
+# XGBoost model development
+from hyperopt import hp, STATUS_OK, Trials, fmin, tpe
 from xgboost import XGBRegressor, plot_tree
 from sklearn.model_selection import cross_val_score
-from scipy.stats import kurtosis
+
+
+## Descriptive statistical analysis tools--------------------------------------
+# These functions allow to describe the general patterns of data. group-based
+# descriptive statistics, box-plotting, simple correlation, and data
+# distribution pattern can be identified using the following functions.
+## ----------------------------------------------------------------------------
+
+def load_your_data(
+    data_dir: str,
+    data_file: str,
+    train_size: int,
+    target_var: str
+) -> DataFrame:
+
+    df = pd.read_csv(data_dir + data_file, index_col = [0, 1, 2, 3])
+
+    df_model = df.copy()
+    y = df_model[target_var]
+    X = df_model.drop([target_var], axis=1)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, train_size = train_size, shuffle=False
+    )
+
+    return X_train, X_test, y_train, y_test
 
 def descriptive_statistics_groupby(
     df: DataFrame,
@@ -23,6 +70,13 @@ def descriptive_statistics_groupby(
     )
     return df_grp_descript
 
+def mean_std_boxplots(
+    df: DataFrame, rows: int, cols: int, groupby: str
+) -> None:
+
+    fig, ax = plt.subplots(figsize=(15, 50), sharey=False)
+    plt.suptitle("")
+    df.boxplot(by=groupby, ax=ax)
 
 def correlation_matrix_figure(df: DataFrame, annot: str) -> None:
     correlations = df.corr()
@@ -39,14 +93,94 @@ def correlation_matrix_figure(df: DataFrame, annot: str) -> None:
     )  # char_kws = {'shrink': .70})
     plt.show
 
+## Model development functions------------------------------------------
+# These functions are for development of XGBoost model with data set.
+# Two seperate functions for input feature selection is prepared: i.e.
+# forward_seq_feat_selec() and feat_selec_with_borutashap(). Either can be
+# used in your model development. 
+## ---------------------------------------------------------------------
 
-def mean_std_boxplots(
-    df: DataFrame, rows: int, cols: int, groupby: str
-) -> None:
+def forward_seq_feat_selec(
+    X_train: DataFrame,
+    y_train: Series,
+    input_feat_no: int,
+    n_jobs: int) -> DataFrame:
+    
+    xgbm_sfs = XGBRegressor(objective="reg:squarederror", n_estimators=100,
+                            tree_method="gpu_hist")
 
-    fig, ax = plt.subplots(figsize=(15, 50), sharey=False)
-    plt.suptitle("")
-    df.boxplot(by=groupby, ax=ax)
+    sfs_res = sfs(xgbm_sfs, k_features= input_feat_no,
+                  forward=True, floating=False, verbose=2,
+                  scoring="neg_root_mean_squared_error", cv=5,
+                  n_jobs = n_jobs)
+
+    sfs_res = sfs_res.fit(X_train, y_train)
+
+    # Plot negative RMSE against the number of input features used in the test
+    fig = plot_sequential_feature_selection(
+        sfs_res.get_metric_dict(), kind="std_dev"
+    )
+    plt.title("Sequential forward Selection")
+    plt.rcParams["figure.figsize"] = (30, 20)
+    plt.xticks(fontsize = 16)
+    plt.yticks(fontsize = 16)
+    plt.grid()
+    plt.show()
+
+    return sfs_res
+
+
+
+def feat_selec_with_borutashap(
+    X_train: DataFrame,
+    X_test: DataFrame,
+    y_train: Series
+):
+
+    # Preliminary XGBoost model creation
+    xgbm_pre = XGBRegressor(
+        objective="reg:squarederror",
+        max_depth=10,
+        tree_method="gpu_hist"
+    )
+
+    # Making a feature selection frame with BorataShap module
+    Feature_Selector = BorutaShap(
+        model=xgbm_pre,
+        importance_measure="shap",
+        classification=False,
+        percentile=100,
+        pvalue=0.05,
+    )
+
+    # Fitting and selecting input features
+    Feature_Selector.fit(
+        X=X_train,
+        y=y_train,
+        n_trials=100,
+        sample=False,
+        train_or_test="train",
+        normalize=True,
+        verbose=False
+    )
+
+    # Create new input features sets for training and testing
+    features_to_remove = Feature_Selector.features_to_remove
+    X_train_boruta_shap = X_train.drop(columns=features_to_remove)
+    X_test_boruta_shap = X_test.drop(columns=features_to_remove)
+    
+    print("The number of selected input features is ",
+          len(X_train_boruta_shap.columns),
+          "including...", X_train_boruta_shap.columns)
+    
+    return X_train_boruta_shap, X_test_boruta_shap
+
+## Hyper-parameter optimization -----------------------------------------------
+# These functions allow to optimize XGBoost hyper-parameters based on the input
+# features. Bayesian parameter optimization (type A) and genetic algorithm
+# (type B) are available.
+## ----------------------------------------------------------------------------
+
 
 
 def compute_vif_for_X(df: DataFrame) -> DataFrame:
@@ -174,9 +308,13 @@ def plot_mip_analysis_results(
     fig.tight_layout()
 
 
-## The below functions are not currently available (under revision)
+## Randomized simulation functions--------------------------------------
+# These functions are designed (1) to create min-max interpolated data
+# for every input feature, and (2) to generate randomized data blocks
+# consisted of the interpolated data and randomly distributed data.
+##----------------------------------------------------------------------
 
-def minmax_table(df: DataFrame, linnum: int, rdn_num: int, out_dir: str):
+def minmax_table(df: DataFrame, rdn_num: int):
 
     minmax_df = pd.DataFrame(df.nunique(), columns=["nunique"])
     minmax_df["max"] = df.max()
@@ -199,14 +337,10 @@ def minmax_table(df: DataFrame, linnum: int, rdn_num: int, out_dir: str):
                 size=rdn_num,
             )
 
-    minmax_df.to_csv(out_dir + "minmax_df.csv")
-    df_rdn.to_csv(out_dir + "df_rdn.csv")
-
     return minmax_df, df_rdn
 
 
 def rdn_simul_data_create(
-    df: DataFrame,
     minmax_df: DataFrame,
     df_rdn: DataFrame,
     linnum: int,
@@ -214,6 +348,8 @@ def rdn_simul_data_create(
     print_option: str,
     out_dir: str,
 ):
+
+    df_tmp = pd.DataFrame()
 
     for idx, col_name in enumerate(minmax_df.index):
 
@@ -248,9 +384,9 @@ def rdn_simul_data_create(
         #  temp_name['Male'] =  np.where( temp_name['Female'] ==0, 1, 0)
 
         if idx == 0:
-            df = temp_name.copy()
+            df_tmp = temp_name.copy()
         else:
-            df = df.append(temp_name)
+            df_tmp = df_tmp.append(temp_name)
 
         # Make CSV files
         print(
@@ -264,3 +400,4 @@ def rdn_simul_data_create(
         if print_option == True:
             # temp_name.to_excel(out_data_dir + "df_rdn_" + col_name + ".xlsx")
             temp_name.to_csv(out_dir + "df_rdn_" + col_name + ".csv")
+

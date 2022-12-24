@@ -1,6 +1,4 @@
 ## Loading modules
-import sys
-sys.path.append("..")
 
 # Data manipulation modules
 import pandas as pd
@@ -23,110 +21,112 @@ from hyperopt import hp, STATUS_OK, Trials, fmin, tpe
 from sklearn.model_selection import cross_val_score
 from xgboost import XGBRegressor, plot_tree
 from src.dda import (
+    load_your_data,
     compute_vif_for_X,
     min_max_linspace_for_mip,
     create_df_mip_with_means_and_itp_data,
     run_mip_analysis_with_df_mip,
-    plot_mip_analysis_results
+    plot_mip_analysis_results,
+    minmax_table,
+    rdn_simul_data_create,
+    feat_selec_with_borutashap,
+    hyper_parameters_objective,
+    forward_seq_feat_selec,
+    hpspace,
 )
 
 
-## Load data
+## Load data and data preparation for modelling
 
-data_dir = "/home/kjeong/kj_python/rawdata/disclosure_data/lms_data_2020/"
-data_file = "Input_rawdata_noNaN.csv"
-df = pd.read_csv(data_dir + data_file)
+# This section allows you to load your rawdata and
+# 0
 
+
+# Load your data
 data_dir = "/home/kjeong/kj_python/rawdata/disclosure_data/employment_rate/"
 data_file = "rawdata_analysis_employment.csv"
-df = pd.read_csv(data_dir + data_file, index_col=0)
 
-## Data preparation for modelling
-
-# Data preparation for model development
-df_model = df.copy()
-df_model = df.drop(["Male", "Female", "SN"], axis=1)
-
-df_model = df.drop(["Yr_disclosure", "Regions", "Codes"], axis=1)
-#"Number_of_StudR", "Number_of_StudE"
-y = df_model["Credits"]
-X = df_model.drop(["Credits"], axis=1)
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, shuffle=True
-)
-X_train = X_train.dropna()
-X_test = X_test.dropna()
-y_train = y_train.dropna()
-y_test = y_test.dropna()
-
-
-## Preliminary model creation and input feature seleciton (BorutaShap)
-
-xgbm_pre = XGBRegressor(
-    objective="reg:squarederror",
-    max_depth=10,
-    tree_method="gpu_hist",
-)
-
-Feature_Selector = BorutaShap(
-    model=xgbm_pre,
-    importance_measure="shap",
-    classification=False,
-    percentile=100,
-    pvalue=0.05,
-)
-
-Feature_Selector.fit(
-    X=X_train,
-    y=y_train,
-    n_trials=100,
-    sample=False,
-    train_or_test="train",
-    normalize=True,
-    verbose=False
+X_train, X_test, y_train, y_test = load_your_data(
+    data_dir, data_file, 268, "Employment_rates"
 )
 
 
-features_to_remove = Feature_Selector.features_to_remove
-X_train_boruta_shap = X_train.drop(columns=features_to_remove)
-X_test_boruta_shap = X_test.drop(columns=features_to_remove)
-print(len(X_train_boruta_shap.columns))
+#X_train = X_train.dropna()
+#X_test = X_test.dropna()
+#y_train = y_train.dropna()
+#y_test = y_test.dropna()
+
+
+## Input feature seleciton (BorutaShap) & hyper-parameter optimization
+
+# Input feature selection type A: using BorutaShap module
+X_train_boruta_shap, X_test_boruta_shap = feat_selec_with_borutashap(X_train, X_test, y_train)
+
+# Input feature selection type B: using sequential forward slection module
+sfs_res = forward_seq_feat_selec(X_train, y_train, 7)
+
+sfs_res_dict = sfs_res.get_metric_dict()
+print(sfs_res_dict)
+df_sfs_res_dict = pd.DataFrame(sfs_res_dict)
+df_sfs_res_dict.to_csv(data_dir + "df_sfs_res_dict.csv")
+#sfs_res_dict_best = sfs_res_dict[feature_idx]
+
+fig = plot_sequential_feature_selection(
+        sfs_res.get_metric_dict(), kind="std_dev"
+    )
+
+plt.title("Sequential forward Selection")
+plt.rcParams["figure.figsize"] = (30, 20)
+plt.xticks(fontsize = 16)
+plt.yticks(fontsize = 16)
+plt.grid()
+plt.show()
+
+
+feat_cols = list(sfs_res.k_feature_idx_)
+print(feat_cols)
+
+
+hyper_parameters_objective(hpspace)
+
 
 ## Hyper-parameters optimization
 
-hpspace = {
-    "max_depth": hp.quniform("max_depth", 3, 10, 1),
-    "gamma": hp.uniform("gamma", 1, 9),
-    "reg_alpha": hp.quniform("reg_alpha", 0, 0.5, 0.1),
-    "reg_lambda": hp.uniform("reg_lambda", 0, 1),
-    "eta": hp.uniform("eta", 0.01, 0.2),
-    "min_child_weight": hp.quniform("min_child_weight", 0, 2, 0.1),
-    "subsample": hp.uniform("subsample", 0.5, 1),
-    "colsample_bytree": hp.uniform("colsample_bytree", 0.1, 1),
-    "scale_pos_weight": hp.uniform("scale_pos_weight", 0.1, 1),
-}
+#hpspace = {
+#    "max_depth": hp.quniform("max_depth", 3, 10, 1),
+#    "gamma": hp.uniform("gamma", 1, 9),
+#    "reg_alpha": hp.quniform("reg_alpha", 0, 0.5, 0.1),
+#    "reg_lambda": hp.uniform("reg_lambda", 0, 1),
+#    "eta": hp.uniform("eta", 0.01, 0.2),
+#    "min_child_weight": hp.quniform("min_child_weight", 0, 2, 0.1),
+#    "subsample": hp.uniform("subsample", 0.5, 1),
+#    "colsample_bytree": hp.uniform("colsample_bytree", 0.1, 1),
+#    "scale_pos_weight": hp.uniform("scale_pos_weight", 0.1, 1),
+#}
 
-def hyper_parameters_objective(hpspace: dict):
-    xgb_hpo = XGBRegressor(
-        objective="reg:squarederror",
-        n_estimators=1000,
-        max_depth=int(hpspace["max_depth"]),
-        gamma=hpspace["gamma"],
-        reg_alpha=hpspace["reg_alpha"],
-        reg_lambda=hpspace["reg_lambda"],
-        eta=hpspace["eta"],
-        min_child_weight=hpspace["min_child_weight"],
-        subsample=hpspace["subsample"],
-        colsample_bytree=hpspace["colsample_bytree"],
-        scale_pos_weight=hpspace["scale_pos_weight"],
-        tree_method="gpu_hist",
-        n_jobs=-1,
-    )
-    best_score = cross_val_score(
-        xgb_hpo, X_train, y_train, scoring="neg_mean_squared_error", cv=10
-    ).mean()
-    loss = 1 - best_score
-    return loss
+#def hyper_parameters_objective(hpspace: dict):
+#    xgb_hpo = XGBRegressor(
+#        objective="reg:squarederror",
+#        n_estimators=1000,
+#        max_depth=int(hpspace["max_depth"]),
+#        gamma=hpspace["gamma"],
+#        reg_alpha=hpspace["reg_alpha"],
+#        reg_lambda=hpspace["reg_lambda"],
+#        eta=hpspace["eta"],
+#        min_child_weight=hpspace["min_child_weight"],
+#        subsample=hpspace["subsample"],
+#        colsample_bytree=hpspace["colsample_bytree"],
+#        scale_pos_weight=hpspace["scale_pos_weight"],
+#        tree_method="gpu_hist",
+#        n_jobs=-1,
+#    )
+#    best_score = cross_val_score(
+#        xgb_hpo, X_train, y_train, scoring="neg_mean_squared_error", cv=10
+#    ).mean()
+#    loss = 1 - best_score
+#    return loss
+
+
 
 best = fmin(
     fn=hyper_parameters_objective,
@@ -170,7 +170,10 @@ df_mip = create_df_mip_with_means_and_itp_data(X_train_boruta_shap, df_interpola
 df_mip_input, df_mip_res = run_mip_analysis_with_df_mip(df_mip, xgb_model_production, data_dir)
 plot_mip_analysis_results(df_mip_input, df_mip_res)
 
+## Random simulation for input features
 
+minmax_df, df_rdn = minmax_table(X_train_boruta_shap, 11)
+rdn_simul_data_create(X_train_boruta_shap, minmax_df)
 
 ## Modelling resuts
 
@@ -264,19 +267,6 @@ for i in range(10):
 
 
 ## The below is miscellenous or not used at the moment.
-
-asciixgbm_pre.fit(
-    X_train,
-    y_train,
-    eval_set=[(X_train, y_train), (X_test, y_test)],
-    eval_metric=["rmse"],
-    verbose=100,
-    early_stopping_rounds=400,
-)
-
-plt.rcParams["figure.figsize"] = (15, 15)
-plot_tree(xgbm_pre, num_trees=xgbm_pre.get_booster().best_iteration)
-plt.show()
 
 
 
