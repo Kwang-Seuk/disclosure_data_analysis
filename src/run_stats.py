@@ -8,7 +8,7 @@ from mlxtend.plotting import plot_sequential_feature_selection
 from xgboost import XGBRegressor, plot_tree
 from src.dda import (
     descriptive_statistics as dstat,
-    descriptive_statistics_groupby as gdstat,
+    descriptive_statistics_groupby as dstatg,
     correlation_matrix_figure,
     mean_std_boxplots,
 )
@@ -22,13 +22,10 @@ df = pd.read_csv(data_dir + data_file, index_col=0)
 
 ## Descriptive and simple statistics
 
-# Descriptive statistics: mean, std, max, min, skewness, and kurtosis for all data
-dstat_df = dstat(df)
-dstat_df.to_csv(data_dir + "dstat.csv")
 
 # Descriptive statistics: mean, std, max, min, and skewness per group_var
-gdstat_df = gdstat(df, "Yr_disclosure", "Regions", "Codes")
-gdstat_df.to_csv(data_dir + "g_Yr_dstat.csv")
+dstatg_df = dstatg(df, "disclosure_year")
+dstatg_df.to_csv(data_dir + "g_Yr_dstat.csv")
 
 ## Data statistical illustrations
 
@@ -37,7 +34,11 @@ mean_std_boxplots(df, 11, 9, "Yr_disclosure")
 
 # Histrogram illustration for all data
 df_hist = df.drop(["Regions", "Codes"], axis=1)
-df_hist.hist(figsize = (50, 25), bins=30)
 
+plt.rcParams["figure.dpi"] = 300
+df_hist['Number_of_capstone_students'].hist(by=df_hist['Yr_disclosure'], figsize = (10, 3), sharey = True, bins=20, layout=(1,3), rwidth=0.9, xrot = 360)
+df_hist['Capstone_funds'].hist(by=df_hist['Yr_disclosure'], figsize = (10, 3), sharey = True, bins=20, layout=(1,3), rwidth=0.9, xrot = 360)
+df_hist['TPTC_per_1K'].hist(by=df_hist['Yr_disclosure'], figsize = (10, 3), sharey = True, bins=20, layout=(1,3), rwidth=0.9, xrot = 360)
+df_hist['TPTC'].hist(by=df_hist['Yr_disclosure'], figsize = (10, 3), sharey = True, bins=20, layout=(1,3), rwidth=0.9, xrot = 360)
 # Corrlation matrix plot for all data
 correlation_matrix_figure(df, False)
