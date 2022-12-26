@@ -3,10 +3,6 @@
 ## ---------------------------------------------------------------------------
 
 
-# OS control
-import sys
-sys.path.append("..")
-
 # Fundamental data manipulation
 import pandas as pd
 import numpy as np
@@ -35,19 +31,15 @@ from sklearn.model_selection import cross_val_score
 
 
 ## Descriptive statistical analysis tools--------------------------------------
-# These functions allow to describe the general patterns of data. group-based
-# descriptive statistics, box-plotting, simple correlation, and data
-# distribution pattern can be identified using the following functions.
+# This section consists of the functions of data loading and group-based 
+# descriptive statistics.
 ## ----------------------------------------------------------------------------
 
 def load_your_data(
-    data_dir: str,
-    data_file: str,
+    df: DataFrame,
     train_size: int,
     target_var: str
 ) -> DataFrame:
-
-    df = pd.read_csv(data_dir + data_file, index_col = [0, 1, 2, 3])
 
     df_model = df.copy()
     y = df_model[target_var]
@@ -61,20 +53,24 @@ def load_your_data(
 def descriptive_statistics_groupby(
     df: DataFrame,
     group_var: str,
-) -> DataFrame:
+    data_dir: str,
+    desc_csv_file: str
+) -> Series:
 
-    df_grp_descript = (
+    ser_grp_descript = (
         df.groupby(group_var)
         .agg(["mean", "std", "min", "max", "skew", kurtosis])
         .unstack()
     )
-    return df_grp_descript
+
+    ser_grp_descript.to_csv(data_dir + desc_csv_file)
+    return ser_grp_descript
 
 def mean_std_boxplots(
     df: DataFrame, rows: int, cols: int, groupby: str
 ) -> None:
 
-    fig, ax = plt.subplots(figsize=(15, 50), sharey=False)
+    fig, ax = plt.subplots(figsize=(15, 50)) # , sharey = False
     plt.suptitle("")
     df.boxplot(by=groupby, ax=ax)
 
@@ -100,34 +96,6 @@ def correlation_matrix_figure(df: DataFrame, annot: str) -> None:
 # used in your model development. 
 ## ---------------------------------------------------------------------
 
-def forward_seq_feat_selec(
-    X_train: DataFrame,
-    y_train: Series,
-    input_feat_no: int,
-    n_jobs: int) -> DataFrame:
-    
-    xgbm_sfs = XGBRegressor(objective="reg:squarederror", n_estimators=100,
-                            tree_method="gpu_hist")
-
-    sfs_res = sfs(xgbm_sfs, k_features= input_feat_no,
-                  forward=True, floating=False, verbose=2,
-                  scoring="neg_root_mean_squared_error", cv=5,
-                  n_jobs = n_jobs)
-
-    sfs_res = sfs_res.fit(X_train, y_train)
-
-    # Plot negative RMSE against the number of input features used in the test
-    fig = plot_sequential_feature_selection(
-        sfs_res.get_metric_dict(), kind="std_dev"
-    )
-    plt.title("Sequential forward Selection")
-    plt.rcParams["figure.figsize"] = (30, 20)
-    plt.xticks(fontsize = 16)
-    plt.yticks(fontsize = 16)
-    plt.grid()
-    plt.show()
-
-    return sfs_res
 
 
 

@@ -22,6 +22,8 @@ from sklearn.model_selection import cross_val_score
 from xgboost import XGBRegressor, plot_tree
 from src.dda import (
     load_your_data,
+    descriptive_statistics_groupby,
+    mean_std_boxplots,
     compute_vif_for_X,
     min_max_linspace_for_mip,
     create_df_mip_with_means_and_itp_data,
@@ -30,64 +32,41 @@ from src.dda import (
     minmax_table,
     rdn_simul_data_create,
     feat_selec_with_borutashap,
-    hyper_parameters_objective,
-    forward_seq_feat_selec,
-    hpspace,
 )
 
 
 ## Load data and data preparation for modelling
 
-# This section allows you to load your rawdata and
-# 0
+# This section allows you to load your rawdata and to produce input
+# (X) and output (y) data sets. Each data sets will be divided into
+# training and testing data.
 
 
 # Load your data
 data_dir = "/home/kjeong/kj_python/rawdata/disclosure_data/employment_rate/"
 data_file = "rawdata_analysis_employment.csv"
 
-X_train, X_test, y_train, y_test = load_your_data(
-    data_dir, data_file, 268, "Employment_rates"
-)
+df = pd.read_csv(data_dir + data_file, index_col = [0, 1, 2, 3])
 
+X_train, X_test, y_train, y_test = load_your_data(df, 268, "Employment_rates")
 
-#X_train = X_train.dropna()
-#X_test = X_test.dropna()
-#y_train = y_train.dropna()
-#y_test = y_test.dropna()
+# Descriptive statistics and save as csv file
 
+mean_std_boxplots(df, 5, 5, "Yr_disclosure")
+df_desc_stats = descriptive_statistics_groupby(df, "Yr_disclosure", data_dir, "descriptive_statistics.csv")
 
 ## Input feature seleciton (BorutaShap) & hyper-parameter optimization
+
+# This section consists of two types of input feature selection functions:
+# i.e. BorutaShap-based feature selection & sequential feature selection.
+# Either tools can be used regarding your purpose. Please do not use
+# both of selection functions at once (use only one method).
+
 
 # Input feature selection type A: using BorutaShap module
 X_train_boruta_shap, X_test_boruta_shap = feat_selec_with_borutashap(X_train, X_test, y_train)
 
-# Input feature selection type B: using sequential forward slection module
-sfs_res = forward_seq_feat_selec(X_train, y_train, 7)
 
-sfs_res_dict = sfs_res.get_metric_dict()
-print(sfs_res_dict)
-df_sfs_res_dict = pd.DataFrame(sfs_res_dict)
-df_sfs_res_dict.to_csv(data_dir + "df_sfs_res_dict.csv")
-#sfs_res_dict_best = sfs_res_dict[feature_idx]
-
-fig = plot_sequential_feature_selection(
-        sfs_res.get_metric_dict(), kind="std_dev"
-    )
-
-plt.title("Sequential forward Selection")
-plt.rcParams["figure.figsize"] = (30, 20)
-plt.xticks(fontsize = 16)
-plt.yticks(fontsize = 16)
-plt.grid()
-plt.show()
-
-
-feat_cols = list(sfs_res.k_feature_idx_)
-print(feat_cols)
-
-
-hyper_parameters_objective(hpspace)
 
 
 ## Hyper-parameters optimization
@@ -270,87 +249,7 @@ for i in range(10):
 
 
 
-## Forward input feature selection test (hereafter new XGB created)
-## (This code section can be used in future.)
 
-# Input feature exploration by sequential_feature_selector
-xgbm_sfs = XGBRegressor(
-    objective="reg:squarederror",
-    n_estimators=100,
-    tree_method="gpu_hist",
-)
-
-sfs_res = sfs(
-    xgbm_sfs,
-    k_features=88,
-    forward=True,
-    floating=False,
-    verbose=2,
-    scoring="neg_root_mean_squared_error",
-    cv=5,
-)
-
-sfs_res = sfs_res.fit(X_train, y_train)
-
-# Plot negative RMSE against the number of input features used in the test
-fig = plot_sequential_feature_selection(
-    sfs_res.get_metric_dict(), kind="std_dev"
-)
-plt.title("Sequential forward Selection")
-plt.rcParams["figure.figsize"] = (30, 20)
-plt.grid()
-plt.show()
-
-# Input feature exploration by sequential_feature_selector (up to best features)
-xgbm_sfs1 = XGBRegressor(
-    objective="reg:squarederror",
-    n_estimators=100,
-    tree_method="gpu_hist",
-)
-
-sfs_res1 = sfs(
-    xgbm_sfs1,
-    k_features=6,
-    forward=True,
-    floating=False,
-    verbose=2,
-    scoring="neg_root_mean_squared_error",
-    cv=5,
-)
-
-sfs_res1 = sfs_res1.fit(X_train, y_train)
-
-
-# Get the best input feature list from the sfs result
-feat_cols = list(sfs_res1.k_feature_idx_)
-print(feat_cols)
-
-# Make new train/test data with selected input features
-X_tr_sel = X_train.iloc[:, feat_cols]
-X_tst_sel = X_test.iloc[:, feat_cols]
-
-# New XGBoost model with the selected input features
-xgbm_pre= XGBRegressor(
-    objective="reg:squarederror",
-    n_estimators=1000,
-    gamma=1,
-    min_child_weight=1,
-    colsample_bytree=1,
-    max_depth=5,
-)
-
-xgbm_sel_if.fit(
-    X_train_boruta_shap,
-    y_train,
-    eval_set=[(X_train_boruta_shap, y_train), (X_test_boruta_shap, y_test)],
-    eval_metric=["rmse"],
-    verbose=100,
-    early_stopping_rounds=400,
-)
-
-plt.rcParams["figure.figsize"] = (50, 50)
-plot_tree(xgbm_sel_if, num_trees=xgbm_sel_if.get_booster().best_iteration)
-plt.show()
 
 ## Prediction results (train / test data)
 
