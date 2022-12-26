@@ -9,83 +9,11 @@ from scipy.stats import describe, kurtosis
 from pandas.testing import assert_frame_equal, assert_series_equal
 from matplotlib import pyplot as plt
 from src.dda import (
-    descriptive_statistics_groupby as dstatg,
     create_df_mip_with_means_and_itp_data,
     min_max_linspace_for_mip,
+    minmax_table,
+    rdn_simul_data_create
 )
-
-
-def test_descript_groupby_result_should_return_as_expected():
-    data = {
-        "Grp": ["A", "A", "A", "A", "B", "B", "B", "B"],
-        "X1": [1, 2, 3, 4, 7, 8, 9, 10],
-    }
-    df = pd.DataFrame(data)
-    df_grp_stats = dstatg(df, "Grp")
-
-    result = {
-        "name": "null",
-        "index": [
-            ["X1", "mean", "A"],
-            ["X1", "mean", "B"],
-            ["X1", "std", "A"],
-            ["X1", "std", "B"],
-            ["X1", "min", "A"],
-            ["X1", "min", "B"],
-            ["X1", "max", "A"],
-            ["X1", "max", "B"],
-            ["X1", "skew", "A"],
-            ["X1", "skew", "B"],
-            ["X1", "kurtosis", "A"],
-            ["X1", "kurtosis", "B"],
-        ],
-        "data": [
-            2.5,
-            8.5,
-            1.2909944487,
-            1.2909944487,
-            1.0,
-            7.0,
-            4.0,
-            10.0,
-            0.0,
-            0.0,
-            -1.36,
-            -1.36,
-        ],
-    }
-
-    result_2_df = pd.DataFrame(result_2)
-    result_2_df
-
-
-def test_rawdata_csv_to_json_result_should_return_as_expected():
-    csv_data = pd.read_csv(
-        "/home/kjeong/kj_python/myrepos/b510/disclosure_data_analysis/tests/testcode_csv.csv",
-        sep=",",
-    )
-    json_data = csv_data.to_json(orient="records")
-
-    expected = (
-        {"SN": 1, "X1": 1, "X2": 2},
-        {"SN": 2, "X1": 1, "X2": 2},
-        {"SN": 3, "X1": 1, "X2": 2},
-    )
-
-    assert json_data == expected
-
-
-def test_mean_calculation_should_result_as_expected():
-    data = {"X1": [1, 2, 3], "X2": [7, 8, 9]}
-
-    df = pd.DataFrame(data)
-    df_mean = pd.DataFrame(df.mean())
-    df_mean_transposed = df_mean.transpose().reset_index(drop=True)
-    df_mean_transposed
-
-    expected = {"X1": [2.0], "X2": [8.0]}
-    df_expected = pd.DataFrame(expected)
-    assert_frame_equal(df_mean_transposed, df_expected)
 
 
 def test_create_n_rows_df_filled_with_colname_means_from_df_should_result_as_expected():
@@ -101,19 +29,18 @@ def test_create_n_rows_df_filled_with_colname_means_from_df_should_result_as_exp
     for col_name in df_mean.index:
         df_mip[col_name] = df_mean["mean"][col_name]
 
-    df_mip
-
     expected = {
-        "X1": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-        "X2": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
-        "X3": [3.0, 3.0, 3.0, 3.0, 3.0, 3.0],
+        "X1": [1.0, 1.0, 1.0],
+        "X2": [2.0, 2.0, 2.0],
+        "X3": [3.0, 3.0, 3.0],
     }
     df_expected = pd.DataFrame(expected)
-
     assert_frame_equal(df_mip, df_expected)
 
 
 def test_linear_interpolation_between_min_max_should_result_as_expected():
+    
+    # This test is for src.dda.min_max_linspace_for_mip() running.
     data = {
         "X1": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
         "X2": [11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
@@ -127,46 +54,90 @@ def test_linear_interpolation_between_min_max_should_result_as_expected():
         "X2": [11.0, 14.0, 17.0, 20.0],
         "X3": [21.0, 24.0, 27.0, 30.0],
     }
-
     df_expected_interval_four = pd.DataFrame(expected_interval_four)
     assert_frame_equal(df_interpolated_four, df_expected_interval_four)
 
     df_interpolated_twenty = min_max_linspace_for_mip(df, 20)
     expected_interval_twenty = {
-        "X1": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.00],
-        "X2": [11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0],
-        "X3": [21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0],
+        "X1": [
+            1.0,
+            1.4736842105263157,
+            1.9473684210526314,
+            2.4210526315789473,
+            2.894736842105263,
+            3.3684210526315788,
+            3.8421052631578947,
+            4.315789473684211,
+            4.789473684210526,
+            5.263157894736842,
+            5.7368421052631575,
+            6.2105263157894735,
+            6.684210526315789,
+            7.157894736842105,
+            7.63157894736842,
+            8.105263157894736,
+            8.578947368421051,
+            9.052631578947368,
+            9.526315789473683,
+            10.0,
+        ],
+        "X2": [
+            11.0,
+            11.473684210526315,
+            11.947368421052632,
+            12.421052631578947,
+            12.894736842105264,
+            13.368421052631579,
+            13.842105263157894,
+            14.31578947368421,
+            14.789473684210526,
+            15.263157894736842,
+            15.736842105263158,
+            16.210526315789473,
+            16.684210526315788,
+            17.157894736842106,
+            17.63157894736842,
+            18.105263157894736,
+            18.57894736842105,
+            19.05263157894737,
+            19.526315789473685,
+            20.0,
+        ],
+        "X3": [
+            21.0,
+            21.473684210526315,
+            21.94736842105263,
+            22.42105263157895,
+            22.894736842105264,
+            23.36842105263158,
+            23.842105263157894,
+            24.31578947368421,
+            24.789473684210527,
+            25.263157894736842,
+            25.736842105263158,
+            26.210526315789473,
+            26.684210526315788,
+            27.157894736842106,
+            27.63157894736842,
+            28.105263157894736,
+            28.57894736842105,
+            29.05263157894737,
+            29.526315789473685,
+            30.0,
+        ],
     }
 
     df_expected_interval_twenty = pd.DataFrame(expected_interval_twenty)
     assert_frame_equal(df_interpolated_twenty, df_expected_interval_twenty)
 
 
-def test_interpolated_data_replacement_should_result_as_expected():
-    data = {"X1": [1, 1, 1, 1, 1, 1], "X2": [2, 2, 2, 2, 2, 2]}
-    df = pd.DataFrame(data)
-
-    interpolated = {"X1": [1, 2, 3], "X2": [7, 8, 9]}
-    df_interpolated = pd.DataFrame(interpolated)
-
-    df_mip = df.copy()
-    interpolated_length = len(df_interpolated)
-
-    for j in range(0, len(df_mip.columns) - 1):
-        for i in range(0, interpolated_length):
-            df_mip.iloc[
-                i : i + interpolated_length - 1, j
-            ] = df_interpolated.iloc[:, j]
-            i += interpolated_length
-        j += 1
-
-    expected = {"X1": [1, 2, 3, 1, 1, 1], "X2": [2, 2, 2, 7, 8, 9]}
-    df_expected = pd.DataFrame(expected)
-
-    assert_frame_equal(df_mip, df_expected)
-
-
 def test_creating_mip_dataframe_should_result_as_expected():
+
+    # This test function is designed to test the implementation of
+    # min_max_linspace_for_mip() and creat_df_mip_with_means_and_itp_data()
+    # simultanesouly. The result dataframe is subjected to the MIP analysis
+    # in modelling process
+    
     data = {
         "X1": [1, 2, 3, 4, 5, 6],
         "X2": [4, 5, 6, 7, 8, 9],
@@ -186,5 +157,51 @@ def test_creating_mip_dataframe_should_result_as_expected():
         "X3_means": [7.5, 7.5, 7.5],
     }
     df_expected = pd.DataFrame(expected)
-
     assert_frame_equal(df_mip, df_expected)
+
+def test_minmax_table_function_should_result_as_expected():
+
+    data = {
+        "X1": [1, 2, 3, 4, 5, 6],
+        "X2": [4, 5, 6, 7, 8, 9],
+        "X3": [7, 8, 9, 6, 7, 8],
+    }
+    df = pd.DataFrame(data)
+    minmax_df, df_rdn = minmax_table(df, 10)
+
+    minmax_data_expected = {
+        "index": ["X1", "X2", "X3"],
+        "nunique": [6, 6, 4],
+        "max": [6, 9, 9], 
+        "min": [1, 4, 6],
+        "dtypes": ["int64", "int64", "int64"]
+    }
+
+    rdn_data_expected = {
+        "X1": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        "X2": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+        "X3": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+    
+
+    df_minmax_data_expected = pd.DataFrame(minmax_data_expected)
+    df_minmax_data_expected.set_index('index', inplace=True)
+    df_minmax_data_expected.index.name = None
+    df_rdn_data_expected = pd.DataFrame(rdn_data_expected)
+
+    assert_frame_equal(minmax_df, df_minmax_data_expected)
+    assert_frame_equal(df_rdn,  df_rdn_data_expected, check_frame_type = True)
+
+def test_random_simulation_function_should_result_as_expected():
+
+    data = {
+        "X1": [1, 2, 3, 4, 5, 6],
+        "X2": [4, 5, 6, 7, 8, 9],
+        "X3": [7, 8, 9, 6, 7, 8],
+    }
+    df = pd.DataFrame(data)
+
+    minmax_df, df_rdn = minmax_table(df, 10)
+    out_dir = "/home/kjeong/kj_python/myrepos/kjrepo/bsv/"
+    rdn_simul_data_create(df, minmax_df, df_rdn, 11, 100, True, out_dir)
+
+
