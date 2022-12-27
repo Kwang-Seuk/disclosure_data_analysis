@@ -50,44 +50,6 @@ def load_your_data(
 
     return X_train, X_test, y_train, y_test
 
-def descriptive_statistics_groupby(
-    df: DataFrame,
-    group_var: str,
-    data_dir: str,
-    desc_csv_file: str
-) -> Series:
-
-    ser_grp_descript = (
-        df.groupby(group_var)
-        .agg(["mean", "std", "min", "max", "skew", kurtosis])
-        .unstack()
-    )
-
-    ser_grp_descript.to_csv(data_dir + desc_csv_file)
-    return ser_grp_descript
-
-def mean_std_boxplots(
-    df: DataFrame, rows: int, cols: int, groupby: str
-) -> None:
-
-    fig, ax = plt.subplots(figsize=(15, 50)) # , sharey = False
-    plt.suptitle("")
-    df.boxplot(by=groupby, ax=ax)
-
-def correlation_matrix_figure(df: DataFrame, annot: str) -> None:
-    correlations = df.corr()
-    fig, ax = plt.subplots(figsize=(20, 20))
-    sns.heatmap(
-        correlations,
-        vmax=1.0,
-        center=0,
-        fmt=".2f",
-        cmap="YlGnBu",
-        square=True,
-        linewidths=0.5,
-        annot=annot,
-    )  # char_kws = {'shrink': .70})
-    plt.show
 
 ## Model development functions------------------------------------------
 # These functions are for development of XGBoost model with data set.
@@ -95,8 +57,6 @@ def correlation_matrix_figure(df: DataFrame, annot: str) -> None:
 # forward_seq_feat_selec() and feat_selec_with_borutashap(). Either can be
 # used in your model development. 
 ## ---------------------------------------------------------------------
-
-
 
 
 def feat_selec_with_borutashap(
@@ -108,7 +68,7 @@ def feat_selec_with_borutashap(
     # Preliminary XGBoost model creation
     xgbm_pre = XGBRegressor(
         objective="reg:squarederror",
-        max_depth=10,
+        max_depth=5,
         tree_method="gpu_hist"
     )
 
@@ -143,12 +103,6 @@ def feat_selec_with_borutashap(
     
     return X_train_boruta_shap, X_test_boruta_shap
 
-## Hyper-parameter optimization -----------------------------------------------
-# These functions allow to optimize XGBoost hyper-parameters based on the input
-# features. Bayesian parameter optimization (type A) and genetic algorithm
-# (type B) are available.
-## ----------------------------------------------------------------------------
-
 
 
 def compute_vif_for_X(df: DataFrame) -> DataFrame:
@@ -159,6 +113,14 @@ def compute_vif_for_X(df: DataFrame) -> DataFrame:
         variance_inflation_factor(df.values, i) for i in range(df.shape[1])
     ]
     return vif
+
+## Most-influencing parameter -------------------------------------------------
+# The functions generate min-max ranged linear values for every input feature
+# selected by the modelling process. A dataframe consisting of One linearly
+# varying feature and average values for the remaining features is generated
+# with the following functions. Then you can campare  responses of the trained
+# model against the given gradual variation of each input feature.
+## ----------------------------------------------------------------------------
 
 
 def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
@@ -178,32 +140,6 @@ def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
         df_interpolated[col_name] = temp_linspace    
     return df_interpolated
 
-#def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
-#
-#    minmax_df = pd.DataFrame(df.nunique(), columns=["nunique"])
-#    minmax_df["min"] = df.min()
-#    minmax_df["max"] = df.max()
-#    minmax_df["dtypes"] = df.dtypes
-#
-#    df_interpolated = pd.DataFrame()
-#    for idx, col_name in enumerate(minmax_df.index):
-#
-#        # If the number of unique values of a variable is > linnum,
-#        # make values equals to linnum, otherwise number of values = nunique
-#        if minmax_df["nunique"][col_name] > interval:
-#            temp_linspace = np.linspace(
-#                minmax_df["min"][col_name],
-#                minmax_df["max"][col_name],
-#                interval,
-#            )
-#        else:
-#            temp_linspace = np.linspace(
-#                minmax_df["min"][col_name],
-#                minmax_df["max"][col_name],
-#                minmax_df["nunique"][col_name],
-#            )
-#        df_interpolated[col_name] = temp_linspace
-#    return df_interpolated
 
 def create_df_mip_with_means_and_itp_data(
     df: DataFrame, df_interpolated: DataFrame
