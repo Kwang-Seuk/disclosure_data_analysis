@@ -1,5 +1,5 @@
 ## Loading modules -----------------------------------------------------------
-# The belows are the modules used in this function code. 
+# The belows are the modules used in this function code.
 ## ---------------------------------------------------------------------------
 
 
@@ -30,46 +30,34 @@ from xgboost import XGBRegressor, plot_tree
 from sklearn.model_selection import cross_val_score
 
 
-## Descriptive statistical analysis tools--------------------------------------
-# This section consists of the functions of data loading and group-based 
-# descriptive statistics.
-## ----------------------------------------------------------------------------
+## Model development functions------------------------------------------
+# These functions are for development of XGBoost model with data set.
+# Two seperate functions for input feature selection is prepared: i.e.
+# forward_seq_feat_selec() and feat_selec_with_borutashap(). Either can be
+# used in your model development.
+## ---------------------------------------------------------------------
+
 
 def load_your_data(
-    df: DataFrame,
-    train_size: int,
-    target_var: str
+    df: DataFrame, train_size: int, target_var: str
 ) -> DataFrame:
 
     df_model = df.copy()
     y = df_model[target_var]
     X = df_model.drop([target_var], axis=1)
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, train_size = train_size, shuffle=False
+        X, y, train_size=train_size, shuffle=False
     )
 
     return X_train, X_test, y_train, y_test
 
-
-## Model development functions------------------------------------------
-# These functions are for development of XGBoost model with data set.
-# Two seperate functions for input feature selection is prepared: i.e.
-# forward_seq_feat_selec() and feat_selec_with_borutashap(). Either can be
-# used in your model development. 
-## ---------------------------------------------------------------------
-
-
 def feat_selec_with_borutashap(
-    X_train: DataFrame,
-    X_test: DataFrame,
-    y_train: Series
-):
+    X_train: DataFrame, X_test: DataFrame, y_train: Series
+) -> DataFrame:
 
     # Preliminary XGBoost model creation
     xgbm_pre = XGBRegressor(
-        objective="reg:squarederror",
-        max_depth=5,
-        tree_method="gpu_hist"
+        objective="reg:squarederror", max_depth=5, tree_method="gpu_hist"
     )
 
     # Making a feature selection frame with BorataShap module
@@ -89,21 +77,22 @@ def feat_selec_with_borutashap(
         sample=False,
         train_or_test="train",
         normalize=True,
-        verbose=False
+        verbose=False,
     )
 
     # Create new input features sets for training and testing
     features_to_remove = Feature_Selector.features_to_remove
     X_train_boruta_shap = X_train.drop(columns=features_to_remove)
     X_test_boruta_shap = X_test.drop(columns=features_to_remove)
-    
-    print("The number of selected input features is ",
-          len(X_train_boruta_shap.columns),
-          "including...", X_train_boruta_shap.columns)
-    
+
+    print(
+        "The number of selected input features is ",
+        len(X_train_boruta_shap.columns),
+        "including...",
+        X_train_boruta_shap.columns,
+    )
+
     return X_train_boruta_shap, X_test_boruta_shap
-
-
 
 def compute_vif_for_X(df: DataFrame) -> DataFrame:
     # df_vif = df.drop(["Yr_disclosure", "Regions", "Codes"], axis=1)
@@ -113,6 +102,35 @@ def compute_vif_for_X(df: DataFrame) -> DataFrame:
         variance_inflation_factor(df.values, i) for i in range(df.shape[1])
     ]
     return vif
+
+def develop_your_production_model(
+    X_train: DataFrame, y_train: Series,
+    X_test: DataFrame, y_test: Series,
+    hp_best: dict
+):
+
+    for key, value in best.items():
+        best['max_depth']=int(best['max_depth'])
+        #best['n_estimators']=int(best['n_estimators'])
+
+    xgb_model_production = XGBRegressor(
+        objective ='reg:squarederror',
+        n_estimators=1000,
+        n_jobs = -1,
+        **best,
+        tree_method = "gpu_hist")    
+
+    xgb_model_production.fit(
+        X_train_boruta_shap,
+        y_train,
+        eval_set=[(X_train_boruta_shap, y_train), (X_test_boruta_shap, y_test)],
+        eval_metric=["rmse"],
+        verbose=100,
+        #early_stopping_rounds=400,
+    )
+
+    return xgb_production_model
+
 
 ## Most-influencing parameter -------------------------------------------------
 # The functions generate min-max ranged linear values for every input feature
@@ -133,11 +151,9 @@ def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
     df_interpolated = pd.DataFrame()
     for idx, col_name in enumerate(minmax_df.index):
         temp_linspace = np.linspace(
-            minmax_df["min"][col_name],
-            minmax_df["max"][col_name],
-            interval
+            minmax_df["min"][col_name], minmax_df["max"][col_name], interval
         )
-        df_interpolated[col_name] = temp_linspace    
+        df_interpolated[col_name] = temp_linspace
     return df_interpolated
 
 
@@ -156,12 +172,14 @@ def create_df_mip_with_means_and_itp_data(
     return df_mip
 
 
-def run_mip_analysis_with_df_mip(df_mip: DataFrame, model: str, data_dir: str) -> None:
+def run_mip_analysis_with_df_mip(
+    df_mip: DataFrame, model: str, data_dir: str
+) -> None:
 
     X_grp_no = int(len(df_mip.columns) / 2)
     X_itp = df_mip.iloc[:, 0:X_grp_no]
     X_means = df_mip.iloc[:, X_grp_no:]
-    
+
     # store data for further plot creation
     df_mip_res = pd.DataFrame()
     X_itp_for_plot = X_itp.copy()
@@ -172,7 +190,9 @@ def run_mip_analysis_with_df_mip(df_mip: DataFrame, model: str, data_dir: str) -
         X_means_tmp = X_means.copy()
         X_mip = X_means_tmp.drop(X_means_tmp.columns[i], axis=1)
         X_itp_series = X_itp_tmp.iloc[:, i]
-        X_mip = X_mip.merge(X_itp_series.to_frame(), left_index = True, right_index = True)
+        X_mip = X_mip.merge(
+            X_itp_series.to_frame(), left_index=True, right_index=True
+        )
 
         # prediction with the created mip data and store the result to df_mip_res
         mip_col_name = X_mip.columns[-1]
@@ -181,33 +201,31 @@ def run_mip_analysis_with_df_mip(df_mip: DataFrame, model: str, data_dir: str) -
 
         # save the X_mip as a csv file with its itp column name
         X_mip["res"] = mip_pred.tolist()
-        X_mip.to_csv(data_dir + "x_mip_" + mip_col_name + ".csv") 
-        #vars()["X_mip_" + mip_col_name] = X_mip
+        X_mip.to_csv(data_dir + "x_mip_" + mip_col_name + ".csv")
+        # vars()["X_mip_" + mip_col_name] = X_mip
 
     return X_itp_for_plot, df_mip_res
 
-def plot_mip_analysis_results(
-    df_mip_input: DataFrame,
-    df_mip_res: DataFrame
-):
+
+def plot_mip_analysis_results(df_mip_input: DataFrame, df_mip_res: DataFrame):
 
     no_input_feat = len(df_mip_input.columns)
     params = {
         "font.size": 13.0,
-        "axes.titlesize": 'medium',
+        "axes.titlesize": "medium",
         "figure.figsize": (15, 10),
         "axes.grid": True,
-        #"figure.dpi": 75
+        # "figure.dpi": 75
     }
     plt.rcParams.update(params)
-    
+
     col_list = list(df_mip_input.columns)
     subplot_titles = ["{}".format(col) for col in col_list]
 
     fig = plt.figure()
     for i in range(no_input_feat):
         ax = fig.add_subplot(5, 5, 1 + i)
-        ax.plot(df_mip_input.iloc[:, i], df_mip_res.iloc[:, i], 'r-')
+        ax.plot(df_mip_input.iloc[:, i], df_mip_res.iloc[:, i], "r-")
         ax.set_title(subplot_titles[i])
     fig.tight_layout()
 
@@ -217,6 +235,7 @@ def plot_mip_analysis_results(
 # for every input feature, and (2) to generate randomized data blocks
 # consisted of the interpolated data and randomly distributed data.
 ##----------------------------------------------------------------------
+
 
 def minmax_table(df: DataFrame, rdn_num: int):
 
@@ -304,4 +323,3 @@ def rdn_simul_data_create(
         if print_option == True:
             # temp_name.to_excel(out_data_dir + "df_rdn_" + col_name + ".xlsx")
             temp_name.to_csv(out_dir + "df_rdn_" + col_name + ".csv")
-

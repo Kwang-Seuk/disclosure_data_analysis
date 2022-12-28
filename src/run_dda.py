@@ -4,14 +4,9 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from math import floor, ceil
-from pandas.core.frame import DataFrame
 
 # ML data preprecessing modules
-from sklearn.model_selection import train_test_split
 from sklearn.inspection import permutation_importance
-from mlxtend.feature_selection import SequentialFeatureSelector as sfs
-from mlxtend.plotting import plot_sequential_feature_selection
 from statsmodels.stats.outliers_influence import variance_inflation_factor as vif
 from BorutaShap import BorutaShap
 from sklearn.base import clone
@@ -35,30 +30,18 @@ from src.dda import (
 
 ## Load data and data preparation for modelling
 
-# This section allows you to load your rawdata and to produce input
-# (X) and output (y) data sets. Each data sets will be divided into
-# training and testing data.
-
-
-# Load your data
 data_dir = "/home/kjeong/kj_python/rawdata/disclosure_data/employment_rate/"
 data_file = "rawdata_analysis_employment.csv"
 
 df = pd.read_csv(data_dir + data_file, index_col = [0, 1, 2, 3])
-
 X_train, X_test, y_train, y_test = load_your_data(df, 268, "Employment_rates")
 
 
 ## Input feature seleciton (BorutaShap) & hyper-parameter optimization
 
-# This section privides BorutaShap input feature selection and
-# Bayesian-based hyper-parameters optimization functions.
-
-
 # Input feature selection: using BorutaShap module
 
 X_train_boruta_shap, X_test_boruta_shap = feat_selec_with_borutashap(X_train, X_test, y_train)
-
 
 # Hyper-parameters optimization
 
@@ -105,6 +88,7 @@ best = fmin(
 )
 print(best)
 
+
 ## Production model development with selected input features
 ## and optimzied hyper-parameters setting
 
@@ -128,8 +112,6 @@ xgb_model_production.fit(
     #early_stopping_rounds=400,
 )
 
-
-
 ## Most Influencing Parameters (MIP) analysis
 
 df_interpolated = min_max_linspace_for_mip(X_train_boruta_shap, 21)
@@ -137,13 +119,10 @@ df_mip = create_df_mip_with_means_and_itp_data(X_train_boruta_shap, df_interpola
 df_mip_input, df_mip_res = run_mip_analysis_with_df_mip(df_mip, xgb_model_production, data_dir)
 plot_mip_analysis_results(df_mip_input, df_mip_res)
 
-
 ## Random simulation for input features
 
 minmax_df, df_rdn = minmax_table(X_train_boruta_shap, 11)
 rdn_simul_data_create(X_train_boruta_shap, minmax_df)
-
-
 
 ## Depicting modelling results (general figures)
 
@@ -185,5 +164,3 @@ plt.barh(
 )
 plt.xlabel("Permutation Importance")
 plt.savefig("feature_importance_permuted_stud_dropout_rate.png", dpi = 'figure')
-
-
