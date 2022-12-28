@@ -25,6 +25,8 @@ from src.dda import (
     minmax_table,
     rdn_simul_data_create,
     feat_selec_with_borutashap,
+    develop_your_production_model,
+    best_tree_illustration,
 )
 
 
@@ -90,7 +92,9 @@ print(best)
 
 
 ## Production model development with selected input features
-## and optimzied hyper-parameters setting
+## and optimzied hyper-parameters setting                   
+
+xgb_production_model = develop_your_production_model(X_train_boruta_shap, y_train, X_test_boruta_shap, y_test, best)
 
 for key, value in best.items():
     best['max_depth']=int(best['max_depth'])
@@ -124,43 +128,53 @@ plot_mip_analysis_results(df_mip_input, df_mip_res)
 minmax_df, df_rdn = minmax_table(X_train_boruta_shap, 11)
 rdn_simul_data_create(X_train_boruta_shap, minmax_df)
 
-## Depicting modelling results (general figures)
+## Depicting modelling results
+
+best_tree_illustration(xgb_production_model, (15, 15), 150, True)
+predict_train_test(xgb_production_model, X_train_boruta_shap, y_train, X_test_boruta_shap, y_test, True)
+feat_importance_general(xgb_production_model, X_train_boruta_shap)
+feat_importance_permut(xgb_production_model, X_train_boruta_shap, y_train)
 
 # Best tree illustration
-plt.rcParams["figure.figsize"] = (15, 15)
-plt.rcParams['figure.dpi'] = 150 
-plot_tree(xgb_model_production, num_trees=xgb_model_production.get_booster().best_iteration)
-plt.savefig("test_tree_stud_dropout_rate.png", dpi='figure')
+#plt.rcParams["figure.figsize"] = (15, 15)
+#plt.rcParams['figure.dpi'] = 150 
+#plot_tree(xgb_production_model, num_trees=xgb_production_model.get_booster().best_iteration)
+#plt.savefig(data_dir + "fig_test_tree_stud_dropout_rate.png", dpi='figure')
 #plt.show()
 
+
 # Prediction results (train / test data)
-tr_pred = xgb_model_production.predict(X_train_boruta_shap)
-plt.rcParams["figure.figsize"] = (15, 15)
-plt.scatter(y_train, tr_pred)
+#tr_pred = xgb_model_production.predict(X_train_boruta_shap)
+#plt.rcParams["figure.figsize"] = (15, 15)
+#plt.scatter(y_train, tr_pred)
 
-tst_pred = xgb_model_production.predict(X_test_boruta_shap)
-plt.rcParams["figure.figsize"] = (15, 15)
-plt.scatter(y_test, tst_pred)
+#tst_pred = xgb_model_production.predict(X_test_boruta_shap)
+#plt.rcParams["figure.figsize"] = (15, 15)
+#plt.scatter(y_test, tst_pred)
 
-plt.savefig("prediction_results_stud_dropout_rate.png", dpi='figure')
+#plt.savefig(data_dir + "fig_prediction_results_stud_dropout_rate.png", dpi='figure')
 
 # Feature importance test for the selected input features
-xgb_model_production.feature_importances_
-feature_names = np.array(X_train_boruta_shap.columns)
-sorted_idx = xgb_model_production.feature_importances_.argsort()
-plt.figure(figsize=(15, 10))
-plt.barh(
-    feature_names[sorted_idx], xgb_model_production.feature_importances_[sorted_idx]
-)
-plt.xlabel("XGBoost Feature Importance")
-plt.savefig("feature_importance_stud_dropout_rate.png", dpi = 'figure')
+#xgb_model_production.feature_importances_
+#feature_names = np.array(X_train_boruta_shap.columns)
+#sorted_idx = xgb_model_production.feature_importances_.argsort()
+#plt.figure(figsize=(15, 10))
+#plt.barh(
+#    feature_names[sorted_idx], xgb_model_production.feature_importances_[sorted_idx]
+#)
+#plt.xlabel("XGBoost Feature Importance")
+#plt.savefig(data_dir + "fig_feature_importance_stud_dropout_rate.png", dpi = 'figure')
 
 # Feature importance (permutation) test for the selected input features
-perm_importance = permutation_importance(xgb_model_production, X_train_boruta_shap, y_train)
-sorted_idx = perm_importance.importances_mean.argsort()
-plt.figure(figsize=(15, 10))
-plt.barh(
-    feature_names[sorted_idx], perm_importance.importances_mean[sorted_idx]
-)
-plt.xlabel("Permutation Importance")
-plt.savefig("feature_importance_permuted_stud_dropout_rate.png", dpi = 'figure')
+#perm_importance = permutation_importance(xgb_model_production, X_train_boruta_shap, y_train)
+#sorted_idx = perm_importance.importances_mean.argsort()
+#plt.figure(figsize=(15, 10))
+#plt.barh(
+#    feature_names[sorted_idx], perm_importance.importances_mean[sorted_idx]
+#)
+#plt.xlabel("Permutation Importance")
+#plt.savefig(data_dir + "fig_feature_importance_permuted_stud_dropout_rate.png", dpi = 'figure')
+
+import os
+cwd = os.getcwd()
+print(cwd)
