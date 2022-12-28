@@ -4,6 +4,7 @@
 
 
 # Fundamental data manipulation
+import os
 import pandas as pd
 import numpy as np
 from pandas.core.frame import DataFrame
@@ -51,13 +52,14 @@ def load_your_data(
 
     return X_train, X_test, y_train, y_test
 
+
 def feat_selec_with_borutashap(
     X_train: DataFrame, X_test: DataFrame, y_train: Series
 ) -> DataFrame:
 
     # Preliminary XGBoost model creation
     xgbm_pre = XGBRegressor(
-        objective="reg:squarederror", max_depth=5, tree_method="gpu_hist"
+        objective="reg:squarederror", tree_method="gpu_hist"
     )
 
     # Making a feature selection frame with BorataShap module
@@ -94,6 +96,7 @@ def feat_selec_with_borutashap(
 
     return X_train_boruta_shap, X_test_boruta_shap
 
+
 def compute_vif_for_X(df: DataFrame) -> DataFrame:
     # df_vif = df.drop(["Yr_disclosure", "Regions", "Codes"], axis=1)
     vif = pd.DataFrame()
@@ -103,33 +106,115 @@ def compute_vif_for_X(df: DataFrame) -> DataFrame:
     ]
     return vif
 
+
 def develop_your_production_model(
-    X_train: DataFrame, y_train: Series,
-    X_test: DataFrame, y_test: Series,
-    hp_best: dict
+    X_train: DataFrame,
+    y_train: Series,
+    X_test: DataFrame,
+    y_test: Series,
+    best: dict,
 ):
 
     for key, value in best.items():
-        best['max_depth']=int(best['max_depth'])
-        #best['n_estimators']=int(best['n_estimators'])
+        best["max_depth"] = int(best["max_depth"])
+        # best['n_estimators']=int(best['n_estimators'])
 
     xgb_model_production = XGBRegressor(
-        objective ='reg:squarederror',
+        objective="reg:squarederror",
         n_estimators=1000,
-        n_jobs = -1,
+        n_jobs=-1,
         **best,
-        tree_method = "gpu_hist")    
-
-    xgb_model_production.fit(
-        X_train_boruta_shap,
-        y_train,
-        eval_set=[(X_train_boruta_shap, y_train), (X_test_boruta_shap, y_test)],
-        eval_metric=["rmse"],
-        verbose=100,
-        #early_stopping_rounds=400,
+        tree_method="gpu_hist"
     )
 
-    return xgb_production_model
+    xgb_model_production.fit(
+        X_train,
+        y_train,
+        eval_set=[(X_train, y_train), (X_test, y_test)],
+        eval_metric=["rmse"],
+        verbose=100,
+        early_stopping_rounds=400,
+    )
+
+    return xgb_model_production
+
+
+## Training results illustration functions ------------------------------------
+# The followings enable you to investigate the trained production model
+# structure and its predictability against training and testing data sets,
+# by depicting the model output results
+## ----------------------------------------------------------------------------
+
+
+def best_tree_illustration(
+    model, fig_size: tuple, fig_dpi: int, fig_save: bool
+):
+
+    plt.rcParams["figure.figsize"] = fig_size
+    plt.rcParams["figure.dpi"] = fig_dpi
+    plot_tree(
+        model,
+        num_trees=model.get_booster().best_iteration,
+    )
+    if fig_save == True:
+        cwd = os.getcwd()
+        plt.savefig(cwd + "/fig_test_tree.jpg", dpi="figure")
+
+
+def predict_train_test(
+    model,
+    X_train: DataFrame,
+    y_train: Series,
+    X_test: DataFrame,
+    y_test: Series,
+    fig_save: bool,
+):
+
+    tr_pred = model.predict(X_train)
+    plt.rcParams["figure.figsize"] = (15, 15)
+    plt.scatter(y_train, tr_pred)
+
+    tst_pred = model.predict(X_test)
+    plt.rcParams["figure.figsize"] = (15, 15)
+    plt.scatter(y_test, tst_pred)
+
+    if fig_save == True:
+        cwd = os.getcwd()
+        plt.savefig(
+            cwd + "fig_train_test_prediction_results.png", dpi="figure"
+        )
+
+
+def feat_importance_general(model, X_train: DataFrame):
+    model.feature_importances_
+    feature_names = np.array(X_train.columns)
+    sorted_idx = model.feature_importances_.argsort()
+    plt.figure(figsize=(15, 10))
+    plt.barh(feature_names[sorted_idx], model.feature_importances_[sorted_idx])
+    plt.xlabel("XGBoost Feature Importance")
+
+    if fig_save == True:
+        cwd = os.getcwd()
+        plt.savefig(
+            cwd + "fig_feature_importance.png", dpi="figure"
+        )
+
+
+def feat_importance_permut(model, X_train: DataFrame, y_train: Series):
+    perm_importance = permutation_importance(model, X_train, y_train)
+    sorted_idx = perm_importance.importances_mean.argsort()
+    plt.figure(figsize=(15, 10))
+    plt.barh(
+        feature_names[sorted_idx], perm_importance.importances_mean[sorted_idx]
+    )
+    plt.xlabel("Permutation Importance")
+
+    if fig_save == True:
+        cwd = os.getcwd()
+        plt.savefig(
+            cwd + "fig_feature_importance_permuted.png",
+            dpi="figure",
+        )
 
 
 ## Most-influencing parameter -------------------------------------------------
