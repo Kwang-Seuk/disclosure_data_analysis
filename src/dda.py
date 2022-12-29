@@ -9,26 +9,19 @@ import pandas as pd
 import numpy as np
 from pandas.core.frame import DataFrame
 from pandas.core.series import Series
-from scipy.stats import kurtosis
 
 # Illustration
 from matplotlib import pyplot as plt
-import seaborn as sns
 
 # ML data preprocessing modules
 from sklearn.model_selection import train_test_split
 from sklearn.inspection import permutation_importance
-from mlxtend.feature_selection import SequentialFeatureSelector as sfs
-from mlxtend.plotting import plot_sequential_feature_selection
+from sklearn.model_selection import cross_val_score
 from statsmodels.stats.outliers_influence import variance_inflation_factor
-from statsmodels.tools.tools import add_constant
 from BorutaShap import BorutaShap
-from sklearn.base import clone
 
 # XGBoost model development
-from hyperopt import hp, STATUS_OK, Trials, fmin, tpe
 from xgboost import XGBRegressor, plot_tree
-from sklearn.model_selection import cross_val_score
 
 
 ## Model development functions------------------------------------------
@@ -97,23 +90,42 @@ def feat_selec_with_borutashap(
     return X_train_boruta_shap, X_test_boruta_shap
 
 
-def compute_vif_for_X(df: DataFrame) -> DataFrame:
-    # df_vif = df.drop(["Yr_disclosure", "Regions", "Codes"], axis=1)
-    vif = pd.DataFrame()
-    vif["features"] = df.columns
-    vif["VIF"] = [
-        variance_inflation_factor(df.values, i) for i in range(df.shape[1])
-    ]
-    return vif
+def hyper_parameters_objective(hpspace: dict):
+    xgb_hpo = XGBRegressor(
+        objective="reg:squarederror",
+        n_estimators=1000,
+        max_depth=int(hpspace["max_depth"]),
+        gamma=hpspace["gamma"],
+        reg_alpha=hpspace["reg_alpha"],
+        reg_lambda=hpspace["reg_lambda"],
+        eta=hpspace["eta"],
+        min_child_weight=hpspace["min_child_weight"],
+        subsample=hpspace["subsample"],
+        colsample_bytree=hpspace["colsample_bytree"],
+        scale_pos_weight=hpspace["scale_pos_weight"],
+        tree_method="gpu_hist",
+        n_jobs=-1,
+    )
+    best_score = cross_val_score(
+        xgb_hpo,
+        hpspace["X_train"],
+        hpspace["y_train"],
+        scoring="neg_mean_squared_error",
+        cv=10,
+    ).mean()
+    loss = 1 - best_score
+    return loss
 
 
 def develop_your_production_model(
-    X_train: DataFrame,
-    y_train: Series,
-    X_test: DataFrame,
-    y_test: Series,
+    hpspace: dict,
     best: dict,
 ):
+
+    X_train = hpspace["X_train"]
+    y_train = hpspace["y_train"]
+    X_test = hpspace["X_test"]
+    y_test = hpspace["y_test"]
 
     for key, value in best.items():
         best["max_depth"] = int(best["max_depth"])
@@ -161,7 +173,7 @@ def best_tree_illustration(
         plt.savefig(cwd + "/fig_test_tree.jpg", dpi="figure")
 
 
-def predict_train_test(
+def predict_plot_train_test(
     model,
     X_train: DataFrame,
     y_train: Series,
