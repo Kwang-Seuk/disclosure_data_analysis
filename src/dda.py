@@ -195,9 +195,7 @@ def feat_importance_general(model, X_train: DataFrame):
 
     if fig_save == True:
         cwd = os.getcwd()
-        plt.savefig(
-            cwd + "fig_feature_importance.png", dpi="figure"
-        )
+        plt.savefig(cwd + "fig_feature_importance.png", dpi="figure")
 
 
 def feat_importance_permut(model, X_train: DataFrame, y_train: Series):
@@ -408,3 +406,30 @@ def rdn_simul_data_create(
         if print_option == True:
             # temp_name.to_excel(out_data_dir + "df_rdn_" + col_name + ".xlsx")
             temp_name.to_csv(out_dir + "df_rdn_" + col_name + ".csv")
+
+
+def hyper_parameters_objective(hpspace: dict):
+    xgb_hpo = XGBRegressor(
+        objective="reg:squarederror",
+        n_estimators=1000,
+        max_depth=int(hpspace["max_depth"]),
+        gamma=hpspace["gamma"],
+        reg_alpha=hpspace["reg_alpha"],
+        reg_lambda=hpspace["reg_lambda"],
+        eta=hpspace["eta"],
+        min_child_weight=hpspace["min_child_weight"],
+        subsample=hpspace["subsample"],
+        colsample_bytree=hpspace["colsample_bytree"],
+        scale_pos_weight=hpspace["scale_pos_weight"],
+        tree_method="gpu_hist",
+        n_jobs=-1,
+    )
+    best_score = cross_val_score(
+        xgb_hpo,
+        hpspace["X_train"],
+        hpspace["y_train"],
+        scoring="neg_mean_squared_error",
+        cv=10,
+    ).mean()
+    loss = 1 - best_score
+    return loss
