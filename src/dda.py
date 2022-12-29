@@ -173,14 +173,12 @@ def best_tree_illustration(
         plt.savefig(cwd + "/fig_test_tree.jpg", dpi="figure")
 
 
-def predict_plot_train_test(
-    model,
-    X_train: DataFrame,
-    y_train: Series,
-    X_test: DataFrame,
-    y_test: Series,
-    fig_save: bool,
-):
+def predict_plot_train_test(model, hpspace: dict, fig_ave: bool):
+
+    X_train = hpspace["X_train"]
+    y_train = hpspace["y_train"]
+    X_test = hpspace["X_test"]
+    y_test = hpspace["y_test"]
 
     tr_pred = model.predict(X_train)
     plt.rcParams["figure.figsize"] = (15, 15)
