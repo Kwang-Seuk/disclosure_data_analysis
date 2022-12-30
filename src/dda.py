@@ -1,7 +1,5 @@
-## Loading modules -----------------------------------------------------------
-# The belows are the modules used in this function code.
-## ---------------------------------------------------------------------------
-
+# Loading modules
+#   The belows are the modules used in this function code.
 
 # Fundamental data manipulation
 import os
@@ -17,19 +15,17 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.inspection import permutation_importance
 from sklearn.model_selection import cross_val_score
-from statsmodels.stats.outliers_influence import variance_inflation_factor
 from BorutaShap import BorutaShap
 
 # XGBoost model development
 from xgboost import XGBRegressor, plot_tree
 
 
-## Model development functions------------------------------------------
-# These functions are for development of XGBoost model with data set.
-# Two seperate functions for input feature selection is prepared: i.e.
-# forward_seq_feat_selec() and feat_selec_with_borutashap(). Either can be
-# used in your model development.
-## ---------------------------------------------------------------------
+# Model development functions
+#   These functions are for development of XGBoost model with data set.
+#   Two seperate functions for input feature selection is prepared: i.e.
+#   forward_seq_feat_selec() and feat_selec_with_borutashap(). Either can be
+#   used in your model development.
 
 
 def load_your_data(
@@ -127,16 +123,14 @@ def develop_your_production_model(
     X_test = hpspace["X_test"]
     y_test = hpspace["y_test"]
 
-    for key, value in best.items():
-        best["max_depth"] = int(best["max_depth"])
-        # best['n_estimators']=int(best['n_estimators'])
+    best["max_depth"] = int(best["max_depth"])
 
     xgb_model_production = XGBRegressor(
         objective="reg:squarederror",
         n_estimators=1000,
         n_jobs=-1,
         **best,
-        tree_method="gpu_hist"
+        tree_method="gpu_hist",
     )
 
     xgb_model_production.fit(
@@ -151,15 +145,14 @@ def develop_your_production_model(
     return xgb_model_production
 
 
-## Training results illustration functions ------------------------------------
-# The followings enable you to investigate the trained production model
-# structure and its predictability against training and testing data sets,
-# by depicting the model output results
-## ----------------------------------------------------------------------------
+# Training results illustration functions
+#   The followings enable you to investigate the trained production model
+#   structure and its predictability against training and testing data sets,
+#   by depicting the model output results
 
 
 def best_tree_illustration(
-    model, fig_size: tuple, fig_dpi: int, fig_save: bool
+    model, fig_size: tuple, fig_dpi: int, fig_save: bool = True
 ):
 
     plt.rcParams["figure.figsize"] = fig_size
@@ -168,12 +161,12 @@ def best_tree_illustration(
         model,
         num_trees=model.get_booster().best_iteration,
     )
-    if fig_save == True:
+    if fig_save is True:
         cwd = os.getcwd()
         plt.savefig(cwd + "/fig_test_tree.jpg", dpi="figure")
 
 
-def predict_plot_train_test(model, hpspace: dict, fig_ave: bool):
+def predict_plot_train_test(model, hpspace: dict, fig_save: bool = True):
 
     X_train = hpspace["X_train"]
     y_train = hpspace["y_train"]
@@ -188,14 +181,14 @@ def predict_plot_train_test(model, hpspace: dict, fig_ave: bool):
     plt.rcParams["figure.figsize"] = (15, 15)
     plt.scatter(y_test, tst_pred)
 
-    if fig_save == True:
+    if fig_save is True:
         cwd = os.getcwd()
         plt.savefig(
             cwd + "fig_train_test_prediction_results.png", dpi="figure"
         )
 
 
-def feat_importance_general(model, X_train: DataFrame):
+def feat_importance_general(model, X_train: DataFrame, fig_save: bool = True):
     model.feature_importances_
     feature_names = np.array(X_train.columns)
     sorted_idx = model.feature_importances_.argsort()
@@ -203,12 +196,18 @@ def feat_importance_general(model, X_train: DataFrame):
     plt.barh(feature_names[sorted_idx], model.feature_importances_[sorted_idx])
     plt.xlabel("XGBoost Feature Importance")
 
-    if fig_save == True:
+    if fig_save is True:
         cwd = os.getcwd()
         plt.savefig(cwd + "fig_feature_importance.png", dpi="figure")
 
 
-def feat_importance_permut(model, X_train: DataFrame, y_train: Series):
+def feat_importance_permut(
+    model,
+    X_train: DataFrame,
+    y_train: Series,
+    feature_names: dict,
+    fig_save: bool = True,
+):
     perm_importance = permutation_importance(model, X_train, y_train)
     sorted_idx = perm_importance.importances_mean.argsort()
     plt.figure(figsize=(15, 10))
@@ -217,7 +216,7 @@ def feat_importance_permut(model, X_train: DataFrame, y_train: Series):
     )
     plt.xlabel("Permutation Importance")
 
-    if fig_save == True:
+    if fig_save is True:
         cwd = os.getcwd()
         plt.savefig(
             cwd + "fig_feature_importance_permuted.png",
@@ -225,13 +224,12 @@ def feat_importance_permut(model, X_train: DataFrame, y_train: Series):
         )
 
 
-## Most-influencing parameter -------------------------------------------------
-# The functions generate min-max ranged linear values for every input feature
-# selected by the modelling process. A dataframe consisting of One linearly
-# varying feature and average values for the remaining features is generated
-# with the following functions. Then you can campare  responses of the trained
-# model against the given gradual variation of each input feature.
-## ----------------------------------------------------------------------------
+# Most-influencing parameter
+#   The functions generate min-max ranged linear values for every input feature
+#   selected by the modelling process. A dataframe consisting of One linearly
+#   varying feature and average values for the remaining features is generated
+#   with the following functions. Then you can campare  responses of the trained
+#   model against the given gradual variation of each input feature.
 
 
 def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
@@ -242,7 +240,7 @@ def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
     minmax_df["dtypes"] = df.dtypes
 
     df_interpolated = pd.DataFrame()
-    for idx, col_name in enumerate(minmax_df.index):
+    for _, col_name in enumerate(minmax_df.index):
         temp_linspace = np.linspace(
             minmax_df["min"][col_name], minmax_df["max"][col_name], interval
         )
@@ -287,7 +285,8 @@ def run_mip_analysis_with_df_mip(
             X_itp_series.to_frame(), left_index=True, right_index=True
         )
 
-        # prediction with the created mip data and store the result to df_mip_res
+        # prediction with the created mip data
+        # and store the result to df_mip_res
         mip_col_name = X_mip.columns[-1]
         mip_pred = model.predict(X_mip)
         df_mip_res[mip_col_name] = mip_pred.tolist()
@@ -313,7 +312,7 @@ def plot_mip_analysis_results(df_mip_input: DataFrame, df_mip_res: DataFrame):
     plt.rcParams.update(params)
 
     col_list = list(df_mip_input.columns)
-    subplot_titles = ["{}".format(col) for col in col_list]
+    subplot_titles = [f"{col}" for col in col_list]
 
     fig = plt.figure()
     for i in range(no_input_feat):
@@ -323,11 +322,10 @@ def plot_mip_analysis_results(df_mip_input: DataFrame, df_mip_res: DataFrame):
     fig.tight_layout()
 
 
-## Randomized simulation functions--------------------------------------
-# These functions are designed (1) to create min-max interpolated data
-# for every input feature, and (2) to generate randomized data blocks
-# consisted of the interpolated data and randomly distributed data.
-##----------------------------------------------------------------------
+# Randomized simulation functions
+#    These functions are designed (1) to create min-max interpolated data
+#    for every input feature, and (2) to generate randomized data blocks
+#    consisted of the interpolated data and randomly distributed data.
 
 
 def minmax_table(df: DataFrame, rdn_num: int):
@@ -360,7 +358,6 @@ def rdn_simul_data_create(
     minmax_df: DataFrame,
     df_rdn: DataFrame,
     linnum: int,
-    rdn_num: int,
     print_option: str,
     out_dir: str,
 ):
@@ -413,33 +410,6 @@ def rdn_simul_data_create(
             + " rows"
         )
         # print(temp_name.head())
-        if print_option == True:
+        if print_option is True:
             # temp_name.to_excel(out_data_dir + "df_rdn_" + col_name + ".xlsx")
             temp_name.to_csv(out_dir + "df_rdn_" + col_name + ".csv")
-
-
-def hyper_parameters_objective(hpspace: dict):
-    xgb_hpo = XGBRegressor(
-        objective="reg:squarederror",
-        n_estimators=1000,
-        max_depth=int(hpspace["max_depth"]),
-        gamma=hpspace["gamma"],
-        reg_alpha=hpspace["reg_alpha"],
-        reg_lambda=hpspace["reg_lambda"],
-        eta=hpspace["eta"],
-        min_child_weight=hpspace["min_child_weight"],
-        subsample=hpspace["subsample"],
-        colsample_bytree=hpspace["colsample_bytree"],
-        scale_pos_weight=hpspace["scale_pos_weight"],
-        tree_method="gpu_hist",
-        n_jobs=-1,
-    )
-    best_score = cross_val_score(
-        xgb_hpo,
-        hpspace["X_train"],
-        hpspace["y_train"],
-        scoring="neg_mean_squared_error",
-        cv=10,
-    ).mean()
-    loss = 1 - best_score
-    return loss
