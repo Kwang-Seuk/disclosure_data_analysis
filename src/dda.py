@@ -188,7 +188,8 @@ def predict_plot_train_test(model, hpspace: dict, fig_save: bool = True):
         )
 
 
-def feat_importance_general(model, X_train: DataFrame, fig_save: bool = True):
+def feat_importance_general(model, hpspace: dict, fig_save: bool = True):
+    X_train = hpspace["X_train"]
     model.feature_importances_
     feature_names = np.array(X_train.columns)
     sorted_idx = model.feature_importances_.argsort()
@@ -201,14 +202,12 @@ def feat_importance_general(model, X_train: DataFrame, fig_save: bool = True):
         plt.savefig(cwd + "fig_feature_importance.png", dpi="figure")
 
 
-def feat_importance_permut(
-    model,
-    X_train: DataFrame,
-    y_train: Series,
-    feature_names: dict,
-    fig_save: bool = True,
-):
+def feat_importance_permut(model, hpspace: dict, fig_save: bool = True):
+    X_train = hpspace["X_train"]
+    y_train = hpspace["y_train"]
+
     perm_importance = permutation_importance(model, X_train, y_train)
+    feature_names = np.array(X_train.columns)
     sorted_idx = perm_importance.importances_mean.argsort()
     plt.figure(figsize=(15, 10))
     plt.barh(
