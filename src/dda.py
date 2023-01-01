@@ -76,6 +76,14 @@ def feat_selec_with_borutashap(
     X_train_boruta_shap = X_train.drop(columns=features_to_remove)
     X_test_boruta_shap = X_test.drop(columns=features_to_remove)
 
+    # Sort columns according to column titles
+    X_train_boruta_shap = X_train_boruta_shap.reindex(
+        sorted(X_train_boruta_shap.columns), axis=1
+    )
+    X_test_boruta_shap = X_test_boruta_shap.reindex(
+        sorted(X_test_boruta_shap.columns), axis=1
+    )
+
     print(
         "The number of selected input features is ",
         len(X_train_boruta_shap.columns),
@@ -231,12 +239,14 @@ def feat_importance_permut(model, hpspace: dict, fig_save: bool = True):
 #   model against the given gradual variation of each input feature.
 
 
-def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
+def min_max_linspace_for_mip(hpspace: dict, interval: int) -> DataFrame:
 
-    minmax_df = pd.DataFrame(df.nunique(), columns=["nunique"])
-    minmax_df["min"] = df.min()
-    minmax_df["max"] = df.max()
-    minmax_df["dtypes"] = df.dtypes
+    X_train = hpspace["X_train"]
+
+    minmax_df = pd.DataFrame(X_train.nunique(), columns=["nunique"])
+    minmax_df["min"] = X_train.min()
+    minmax_df["max"] = X_train.max()
+    minmax_df["dtypes"] = X_train.dtypes
 
     df_interpolated = pd.DataFrame()
     for _, col_name in enumerate(minmax_df.index):
@@ -248,12 +258,14 @@ def min_max_linspace_for_mip(df: DataFrame, interval: int) -> DataFrame:
 
 
 def create_df_mip_with_means_and_itp_data(
-    df: DataFrame, df_interpolated: DataFrame
+    hpspace: dict, df_interpolated: DataFrame
 ) -> DataFrame:
 
-    df_mean_tmp = pd.DataFrame(df.mean(), columns=["mean"])
+    X_train = hpspace["X_train"]
+
+    df_mean_tmp = pd.DataFrame(X_train.mean(), columns=["mean"])
     df_means = pd.DataFrame(
-        columns=list(df.columns), index=range(len(df_interpolated))
+        columns=list(X_train.columns), index=range(len(df_interpolated))
     )
     for col_name in df_mean_tmp.index:
         df_means[col_name] = df_mean_tmp["mean"][col_name]
@@ -262,9 +274,7 @@ def create_df_mip_with_means_and_itp_data(
     return df_mip
 
 
-def run_mip_analysis_with_df_mip(
-    df_mip: DataFrame, model: str, data_dir: str
-) -> None:
+def run_mip_analysis_with_df_mip(df_mip: DataFrame, model: str, data_dir: str):
 
     X_grp_no = int(len(df_mip.columns) / 2)
     X_itp = df_mip.iloc[:, 0:X_grp_no]
@@ -272,30 +282,30 @@ def run_mip_analysis_with_df_mip(
 
     # store data for further plot creation
     df_mip_res = pd.DataFrame()
-    X_itp_for_plot = X_itp.copy()
+    # X_itp_for_plot = X_itp.copy()
 
     for i in range(X_grp_no):
         # make an mip data set for prediction
         X_itp_tmp = X_itp.copy()
         X_means_tmp = X_means.copy()
         X_mip = X_means_tmp.drop(X_means_tmp.columns[i], axis=1)
+        X_mip.columns = X_mip.columns.str.replace("_means", "")
         X_itp_series = X_itp_tmp.iloc[:, i]
         X_mip = X_mip.merge(
             X_itp_series.to_frame(), left_index=True, right_index=True
         )
 
-        # prediction with the created mip data
-        # and store the result to df_mip_res
-        mip_col_name = X_mip.columns[-1]
+        # model prediction with mip data, store the result to df_mip_res
         mip_pred = model.predict(X_mip)
         df_mip_res[mip_col_name] = mip_pred.tolist()
 
         # save the X_mip as a csv file with its itp column name
+        mip_col_name = X_mip.columns[-1]
         X_mip["res"] = mip_pred.tolist()
         X_mip.to_csv(data_dir + "x_mip_" + mip_col_name + ".csv")
         # vars()["X_mip_" + mip_col_name] = X_mip
 
-    return X_itp_for_plot, df_mip_res
+    return df_mip_res
 
 
 def plot_mip_analysis_results(df_mip_input: DataFrame, df_mip_res: DataFrame):
