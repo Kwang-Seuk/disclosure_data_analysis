@@ -1,10 +1,10 @@
-import json
 import pandas as pd
 from pandas.testing import assert_frame_equal, assert_series_equal
 from src.dda import (
     load_your_data,
     create_interpolation_for_mip,
     create_df_means_for_mip,
+    minmax_table,
 )
 
 
@@ -120,3 +120,49 @@ def test_create_means_for_mip_should_result_as_expected():
 
     assert_frame_equal(df_itp, df_expected_itp)
     assert_frame_equal(df_means, df_expected_means)
+
+
+def test_minmax_table_function_should_result_as_expected():
+
+    data = {
+        "X1": [1, 2, 3, 4],
+        "X2": [4, 5, 6, 7],
+        "X3": [7, 7, 8, 8],
+    }
+    df = pd.DataFrame(data)
+    data_dict = {"x_train": df}
+    minmax_df, df_rdn = minmax_table(data_dict, 5)
+
+    minmax_data_expected = {
+        "index": ["X1", "X2", "X3"],
+        "nunique": [4, 4, 2],
+        "max": [4, 7, 8],
+        "min": [1, 4, 7],
+        "dtypes": ["int64", "int64", "int64"],
+    }
+
+    df_minmax_data_expected = pd.DataFrame(minmax_data_expected)
+    df_minmax_data_expected.set_index("index", inplace=True)
+    df_minmax_data_expected.index.name = None
+
+    assert_frame_equal(minmax_df, df_minmax_data_expected)
+
+    ser_df_rdn_count = df_rdn.count()
+    expected_rdn_count = {"X1": 5, "X2": 5, "X3": 5}
+    ser_expected_rdn_count = pd.Series(expected_rdn_count)
+
+    assert_series_equal(ser_df_rdn_count, ser_expected_rdn_count)
+
+    ser_df_rdn_min = df_rdn.min()
+    expected_rdn_min = {"X1": 1, "X2": 4, "X3": 7}
+
+    assert ser_df_rdn_min[0] >= expected_rdn_min["X1"]
+    assert ser_df_rdn_min[1] >= expected_rdn_min["X2"]
+    assert ser_df_rdn_min[2] >= expected_rdn_min["X3"]
+
+    ser_df_rdn_max = df_rdn.max()
+    expected_rdn_max = {"X1": 4, "X2": 7, "X3": 8}
+
+    assert ser_df_rdn_max[0] <= expected_rdn_max["X1"]
+    assert ser_df_rdn_max[1] <= expected_rdn_max["X2"]
+    assert ser_df_rdn_max[2] <= expected_rdn_max["X3"]

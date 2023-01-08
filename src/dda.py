@@ -287,3 +287,92 @@ def plot_mip_analysis_results(
             cwd + "/fig_mip_results.png",
             dpi=fig_dpi,
         )
+
+
+# Random simulation functions
+def minmax_table(data_dict: dict, rdn_num: int):
+
+    x_train = data_dict["x_train"]
+
+    minmax_df = pd.DataFrame(x_train.nunique(), columns=["nunique"])
+    minmax_df["max"] = x_train.max()
+    minmax_df["min"] = x_train.min()
+    minmax_df["dtypes"] = x_train.dtypes
+
+    df_rdn = pd.DataFrame()
+
+    for col_name in minmax_df.index:
+        if minmax_df["dtypes"][col_name] == "float64":
+            df_rdn[col_name] = (
+                np.random.rand(rdn_num)
+                * (minmax_df["max"][col_name] - minmax_df["min"][col_name])
+                + minmax_df["min"][col_name]
+            )
+        else:
+            df_rdn[col_name] = np.random.randint(
+                minmax_df["min"][col_name],
+                minmax_df["max"][col_name] + 1,
+                size=rdn_num,
+            )
+
+    return minmax_df, df_rdn
+
+
+def rdn_simul_data_create(
+    minmax_df: DataFrame,
+    df_rdn: DataFrame,
+    linnum: int,
+    save_res: bool = True,
+):
+
+    df_tmp = pd.DataFrame()
+
+    for idx, col_name in enumerate(minmax_df.index):
+
+        # If the number of unique values of a variable is > linnum,
+        # make values equals to linnum, otherwise number of values = nunique
+        if minmax_df["nunique"][col_name] > linnum:
+            temp_linspace = np.linspace(
+                minmax_df["min"][col_name], minmax_df["max"][col_name], linnum
+            )
+        else:
+            temp_linspace = np.linspace(
+                minmax_df["min"][col_name],
+                minmax_df["max"][col_name],
+                minmax_df["nunique"][col_name],
+            )
+
+        temp_name = "df_rdn_" + col_name
+        globals()[temp_name] = pd.DataFrame()
+
+        for idx, value in enumerate(temp_linspace):
+            df_temp = df_rdn.copy()
+            df_temp[col_name] = value
+
+            if idx == 0:
+                temp_name = df_temp.copy()
+            else:
+                temp_name = temp_name.append(df_temp)
+
+        # if col_name == 'Male':
+        #  temp_name['Female'] =  np.where( temp_name['Male'] ==0, 1, 0)
+        # if col_name == 'Female':
+        #  temp_name['Male'] =  np.where( temp_name['Female'] ==0, 1, 0)
+
+        if idx == 0:
+            df_tmp = temp_name.copy()
+        else:
+            df_tmp = df_tmp.append(temp_name)
+
+        # Make CSV files
+        print(
+            "df_rdn_"
+            + col_name
+            + " done. "
+            + str(temp_name.shape[0])
+            + " rows"
+        )
+        # print(temp_name.head())
+        if save_res is True:
+            cwd = os.getcwd()
+            temp_name.to_csv(cwd + "/df_rdn_" + col_name + ".csv")
