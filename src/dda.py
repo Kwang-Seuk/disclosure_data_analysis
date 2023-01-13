@@ -11,7 +11,6 @@ from sklearn.model_selection import cross_val_score
 from BorutaShap import BorutaShap
 from xgboost import XGBRegressor, plot_tree
 
-
 # Model development functions
 def load_your_data(
     df: DataFrame, train_size: int, target_var: str
@@ -103,7 +102,6 @@ def hyper_parameters_objective(hpspace: dict):
 
 
 def develop_production_model(data_dict: dict, best: dict):
-
     x_train = data_dict["x_train"]
     x_test = data_dict["x_test"]
     y_train = data_dict["y_train"]
@@ -226,6 +224,7 @@ def create_interpolation_for_mip(data_dict: dict, interval: int) -> DataFrame:
             minmax_df["min"][col_name], minmax_df["max"][col_name], interval
         )
         df_interpolated[col_name] = temp_linspace
+
     return df_interpolated
 
 
@@ -241,6 +240,7 @@ def create_df_means_for_mip(
     )
     for col_name in df_mean_tmp.index:
         df_means[col_name] = df_mean_tmp["mean"][col_name]
+
     return df_means
 
 
@@ -276,7 +276,7 @@ def plot_mip_analysis_results(
 
     fig = plt.figure()
     for i, col_name in enumerate(col_list):
-        ax = fig.add_subplot(10, 5, i + 1)
+        ax = fig.add_subplot(5, 5, i + 1)
         ax.plot(df_itp[col_name], df_mip_res[col_name], "r-")
         ax.set_title(col_name)
         fig.tight_layout()
@@ -326,6 +326,7 @@ def rdn_simul_data_create(
 ):
 
     df_tmp = pd.DataFrame()
+    df_rdn_dict = {}  # <-- newly added / not working well
 
     for idx, col_name in enumerate(minmax_df.index):
 
@@ -353,16 +354,19 @@ def rdn_simul_data_create(
                 temp_name = df_temp.copy()
             else:
                 temp_name = temp_name.append(df_temp)
+                df_dict = {
+                    col_name: temp_name
+                }  # <-- newly added / not                working well
 
         # if col_name == 'Male':
         #  temp_name['Female'] =  np.where( temp_name['Male'] ==0, 1, 0)
         # if col_name == 'Female':
         #  temp_name['Male'] =  np.where( temp_name['Female'] ==0, 1, 0)
 
-        if idx == 0:
-            df_tmp = temp_name.copy()
-        else:
-            df_tmp = df_tmp.append(temp_name)
+        # if idx == 0:
+        #    df_tmp = temp_name.copy()
+        # else:
+        #    df_tmp = df_tmp.append(temp_name)
 
         # Make CSV files
         print(
@@ -376,3 +380,6 @@ def rdn_simul_data_create(
         if save_res is True:
             cwd = os.getcwd()
             temp_name.to_csv(cwd + "/df_rdn_" + col_name + ".csv")
+
+    print("All input features are processed")
+    return df_tmp, df_rdn_dict
