@@ -7,6 +7,7 @@ from src.dda import (
     feat_selec_with_borutashap,
     hyper_parameters_objective,
     develop_production_model,
+    production_model_rmse_display,
     best_tree_illustration,
     feat_importance_general,
     feat_importance_permut,
@@ -26,7 +27,7 @@ df = pd.read_csv(data_dir + data_file, index_col=[0, 1, 2, 3])
 x_train, x_test, y_train, y_test = load_your_data(df, 268, "Employment_rates")
 
 x_train_boruta_shap, x_test_boruta_shap = feat_selec_with_borutashap(
-    x_train, x_test, y_train, 500
+    x_train, x_test, y_train, 50
 )
 
 # Hyper-parameters optimization
@@ -47,7 +48,7 @@ hpspace = {
 best = fmin(
     fn=hyper_parameters_objective,
     space=hpspace,
-    max_evals=5,
+    max_evals=50,
     rstate=np.random.default_rng(777),
     algo=tpe.suggest,
 )
@@ -60,7 +61,8 @@ input_data_dict = {
     "y_train": y_train,
     "y_test": y_test,
 }
-xgb_production_model = develop_production_model(input_data_dict, best)
+xgb_production_model = develop_production_model(input_data_dict, 10000, best)
+production_model_rmse_display(xgb_production_model)
 
 # Depicting modelling results
 best_tree_illustration(xgb_production_model, 150, False)
@@ -73,6 +75,6 @@ feat_importance_permut(xgb_production_model, input_data_dict, 150, False)
 df_itp_employ = create_interpolation_for_mip(input_data_dict, 21)
 df_means_employ = create_df_means_for_mip(input_data_dict, df_itp_employ)
 df_mip_res_employ = mip_analysis(
-    df_means_employ, df_itp_employ, xgb_production_model, True
+    df_means_employ, df_itp_employ, xgb_production_model, False
 )
 plot_mip_analysis_results(df_itp_employ, df_mip_res_employ, 150, False)
