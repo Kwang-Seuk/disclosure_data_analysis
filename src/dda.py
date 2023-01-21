@@ -10,8 +10,6 @@ from sklearn.inspection import permutation_importance
 from sklearn.model_selection import cross_val_score
 from BorutaShap import BorutaShap
 from xgboost import XGBRegressor, plot_tree
-from fitter import Fitter, get_common_distributions, get_distributions
-
 
 # Model development functions
 def load_your_data(
