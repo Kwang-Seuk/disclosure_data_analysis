@@ -10,6 +10,8 @@ from sklearn.inspection import permutation_importance
 from sklearn.model_selection import cross_val_score
 from BorutaShap import BorutaShap
 from xgboost import XGBRegressor, plot_tree
+from fitter import Fitter, get_common_distributions, get_distributions
+
 
 # Model development functions
 def load_your_data(
@@ -101,7 +103,7 @@ def hyper_parameters_objective(hpspace: dict):
     return loss
 
 
-def develop_production_model(data_dict: dict, best: dict):
+def develop_production_model(data_dict: dict, iterations: int, best: dict):
     x_train = data_dict["x_train"]
     x_test = data_dict["x_test"]
     y_train = data_dict["y_train"]
@@ -111,7 +113,7 @@ def develop_production_model(data_dict: dict, best: dict):
 
     xgb_model_production = XGBRegressor(
         objective="reg:squarederror",
-        n_estimators=1000,
+        n_estimators=iterations,
         n_jobs=1,
         **best,
         tree_method="gpu_hist",
@@ -123,10 +125,24 @@ def develop_production_model(data_dict: dict, best: dict):
         eval_set=[(x_train, y_train), (x_test, y_test)],
         eval_metric=["rmse"],
         verbose=100,
-        early_stopping_rounds=400,
+        early_stopping_rounds=15,
     )
 
     return xgb_model_production
+
+
+def production_model_rmse_display(model):
+    learning_res = model.evals_result()
+    epochs = len(learning_res["validation_0"]["rmse"])
+    x_axis = range(0, epochs)
+
+    fig, ax = plt.subplots()
+    ax.plot(x_axis, learning_res["validation_0"]["rmse"], label="Train")
+    ax.plot(x_axis, learning_res["validation_1"]["rmse"], label="Test")
+    ax.legend()
+    plt.ylabel("Root Mean Squared Error (RMSE)")
+    plt.title("XGBoost RMSE")
+    plt.show()
 
 
 # Training results illustration functions
@@ -287,99 +303,3 @@ def plot_mip_analysis_results(
             cwd + "/fig_mip_results.png",
             dpi=fig_dpi,
         )
-
-
-# Random simulation functions
-def minmax_table(data_dict: dict, rdn_num: int):
-
-    x_train = data_dict["x_train"]
-
-    minmax_df = pd.DataFrame(x_train.nunique(), columns=["nunique"])
-    minmax_df["max"] = x_train.max()
-    minmax_df["min"] = x_train.min()
-    minmax_df["dtypes"] = x_train.dtypes
-
-    df_rdn = pd.DataFrame()
-
-    for col_name in minmax_df.index:
-        if minmax_df["dtypes"][col_name] == "float64":
-            df_rdn[col_name] = (
-                np.random.rand(rdn_num)
-                * (minmax_df["max"][col_name] - minmax_df["min"][col_name])
-                + minmax_df["min"][col_name]
-            )
-        else:
-            df_rdn[col_name] = np.random.randint(
-                minmax_df["min"][col_name],
-                minmax_df["max"][col_name] + 1,
-                size=rdn_num,
-            )
-
-    return minmax_df, df_rdn
-
-
-def rdn_simul_data_create(
-    minmax_df: DataFrame,
-    df_rdn: DataFrame,
-    linnum: int,
-    save_res: bool = True,
-):
-
-    df_tmp = pd.DataFrame()
-    df_rdn_dict = {}  # <-- newly added / not working well
-
-    for idx, col_name in enumerate(minmax_df.index):
-
-        # If the number of unique values of a variable is > linnum,
-        # make values equals to linnum, otherwise number of values = nunique
-        if minmax_df["nunique"][col_name] > linnum:
-            temp_linspace = np.linspace(
-                minmax_df["min"][col_name], minmax_df["max"][col_name], linnum
-            )
-        else:
-            temp_linspace = np.linspace(
-                minmax_df["min"][col_name],
-                minmax_df["max"][col_name],
-                minmax_df["nunique"][col_name],
-            )
-
-        temp_name = "df_rdn_" + col_name
-        globals()[temp_name] = pd.DataFrame()
-
-        for idx, value in enumerate(temp_linspace):
-            df_temp = df_rdn.copy()
-            df_temp[col_name] = value
-
-            if idx == 0:
-                temp_name = df_temp.copy()
-            else:
-                temp_name = temp_name.append(df_temp)
-                df_dict = {
-                    col_name: temp_name
-                }  # <-- newly added / not                working well
-
-        # if col_name == 'Male':
-        #  temp_name['Female'] =  np.where( temp_name['Male'] ==0, 1, 0)
-        # if col_name == 'Female':
-        #  temp_name['Male'] =  np.where( temp_name['Female'] ==0, 1, 0)
-
-        # if idx == 0:
-        #    df_tmp = temp_name.copy()
-        # else:
-        #    df_tmp = df_tmp.append(temp_name)
-
-        # Make CSV files
-        print(
-            "df_rdn_"
-            + col_name
-            + " done. "
-            + str(temp_name.shape[0])
-            + " rows"
-        )
-        # print(temp_name.head())
-        if save_res is True:
-            cwd = os.getcwd()
-            temp_name.to_csv(cwd + "/df_rdn_" + col_name + ".csv")
-
-    print("All input features are processed")
-    return df_tmp, df_rdn_dict
