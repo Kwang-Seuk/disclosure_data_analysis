@@ -283,12 +283,13 @@ def plot_mip_analysis_results(
     df_itp: DataFrame,
     df_mip_res: DataFrame,
     fig_dpi: int,
+    fig_size: tuple,
     fig_save: bool = True,
 ):
 
     col_list = list(df_itp.columns)
 
-    fig = plt.figure()
+    fig = plt.figure(figsize=fig_size)
     for i, col_name in enumerate(col_list):
         ax = fig.add_subplot(5, 5, i + 1)
         ax.plot(df_itp[col_name], df_mip_res[col_name], "r-")
