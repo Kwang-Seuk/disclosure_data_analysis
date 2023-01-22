@@ -77,4 +77,6 @@ df_means_employ = create_df_means_for_mip(input_data_dict, df_itp_employ)
 df_mip_res_employ = mip_analysis(
     df_means_employ, df_itp_employ, xgb_production_model, False
 )
-plot_mip_analysis_results(df_itp_employ, df_mip_res_employ, 150, False)
+plot_mip_analysis_results(
+    df_itp_employ, df_mip_res_employ, 150, (10, 10), False
+)
