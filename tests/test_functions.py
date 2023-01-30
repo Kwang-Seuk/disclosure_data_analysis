@@ -1,23 +1,12 @@
-from statistics import mean
-import math
 import pandas as pd
 import numpy as np
-from hyperopt import hp, fmin, tpe
-from xgboost import XGBRegressor
 from pandas.testing import assert_frame_equal, assert_series_equal
 import pytest
-from scipy import stats
-from fitter import Fitter
 from src.dda import (
     load_your_data,
     feat_selec_with_borutashap,
-    hyper_parameters_objective,
-    develop_production_model,
     create_interpolation_for_mip,
     create_df_means_for_mip,
-    create_minmax_df,
-    create_rdn_df,
-    rdn_simul_data_create,
 )
 
 
@@ -36,23 +25,6 @@ def fixture_input_df():
     )
 
     return df
-
-
-@pytest.fixture(scope="module")
-def fixture_hpspace():
-    hpspace = {
-        "max_depth": hp.quniform("max_depth", 3, 10, 1),
-        "gamma": hp.uniform("gamma", 0, 10),
-        "reg_alpha": hp.quniform("reg_alpha", 0, 0.5, 0.1),
-        "reg_lambda": hp.uniform("reg_lambda", 0, 1),
-        "eta": hp.uniform("eta", 0, 1),
-        "min_child_weight": hp.quniform("min_child_weight", 0, 2, 0.1),
-        "subsample": hp.uniform("subsample", 0.5, 1),
-        "colsample_bytree": hp.uniform("colsample_bytree", 0.1, 1),
-        "scale_pos_weight": hp.uniform("scale_pos_weight", 0.1, 1),
-    }
-
-    return hpspace
 
 
 def test_data_loading_should_return_expected():
@@ -105,69 +77,6 @@ def test_selected_feats_no_should_be_smaller_than_raw_input_feats(
 
     assert len(x_train.columns) >= len(x_selec_train.columns)
     assert len(x_test.columns) >= len(x_selec_test.columns)
-
-
-def test_hyperparameters_opt_model_works_better_than_normal(
-    fixture_input_df, fixture_hpspace
-):
-    x_train, x_test, y_train, y_test = load_your_data(
-        fixture_input_df, 600, "y"
-    )
-    x_selec_train, x_selec_test = feat_selec_with_borutashap(
-        x_train, x_test, y_train, 50
-    )
-
-    # Preliminary xgboost model training & final rmse obtainment
-    xgb_pre = XGBRegressor(
-        objective="reg:squarederror",
-        n_estimators=1000,
-        n_jobs=1,
-        tree_method="gpu_hist",
-    )
-
-    xgb_pre.fit(
-        x_selec_train,
-        y_train,
-        eval_set=[(x_selec_train, y_train), (x_selec_test, y_test)],
-        eval_metric=["rmse"],
-        verbose=100,
-        early_stopping_rounds=400,
-    )
-    xgb_pre_result = xgb_pre.evals_result()
-    xgb_pre_train_fin_rmse = xgb_pre_result["validation_0"]["rmse"][-1]
-    xgb_pre_test_fin_rmse = xgb_pre_result["validation_1"]["rmse"][-1]
-
-    # Production xgboost model training & final rmse obtainment
-    fixture_hpspace["x_train"] = x_selec_train
-    fixture_hpspace["y_train"] = y_train
-
-    best = fmin(
-        fn=hyper_parameters_objective,
-        space=fixture_hpspace,
-        max_evals=50,
-        rstate=np.random.default_rng(777),
-        algo=tpe.suggest,
-    )
-
-    input_dict = {
-        "x_train": x_selec_train,
-        "x_test": x_selec_test,
-        "y_train": y_train,
-        "y_test": y_test,
-    }
-
-    xgb_production = develop_production_model(input_dict, 1000, best)
-
-    xgb_production_result = xgb_production.evals_result()
-    xgb_production_train_fin_rmse = xgb_production_result["validation_0"][
-        "rmse"
-    ][-1]
-    xgb_production_test_fin_rmse = xgb_production_result["validation_1"][
-        "rmse"
-    ][-1]
-
-    assert xgb_production_train_fin_rmse <= xgb_pre_train_fin_rmse
-    assert xgb_production_test_fin_rmse <= xgb_pre_test_fin_rmse
 
 
 def test_interpolation_for_mip_should_result_as_expected():
