@@ -11,11 +11,11 @@ from sklearn.model_selection import cross_val_score
 from BorutaShap import BorutaShap
 from xgboost import XGBRegressor, plot_tree
 
+
 # Model development functions
 def load_your_data(
     df: DataFrame, train_size: int, target_var: str
 ) -> DataFrame:
-
     df_model = df.copy()
     y = df_model[target_var]
     X = df_model.drop([target_var], axis=1)
@@ -27,13 +27,21 @@ def load_your_data(
 
 
 def feat_selec_with_borutashap(
-    x_train: DataFrame, x_test: DataFrame, y_train: Series, sel_trial: int
+    x_train: DataFrame,
+    x_test: DataFrame,
+    y_train: Series,
+    sel_trial: int,
+    gpu_flag: bool,
 ) -> DataFrame:
 
-    # Preliminary XGBoost model creation
-    xgbm_pre = XGBRegressor(
-        objective="reg:squarederror", tree_method="gpu_hist"
-    )
+    if gpu_flag is True:
+        xgbm_pre = XGBRegressor(
+            objective="reg:squarederror", tree_method="gpu_hist"
+        )
+    else:
+        xgbm_pre = XGBRegressor(
+            objective="reg:squarederror", tree_method="approx"
+        )
 
     # Making a feature selection frame with BorataShap module
     Feature_Selector = BorutaShap(
@@ -101,7 +109,9 @@ def hyper_parameters_objective(hpspace: dict):
     return loss
 
 
-def develop_production_model(data_dict: dict, iterations: int, best: dict):
+def develop_production_model(
+    data_dict: dict, iterations: int, best: dict, gpu_flag: bool
+):
     x_train = data_dict["x_train"]
     x_test = data_dict["x_test"]
     y_train = data_dict["y_train"]
@@ -109,13 +119,22 @@ def develop_production_model(data_dict: dict, iterations: int, best: dict):
 
     best["max_depth"] = int(best["max_depth"])
 
-    xgb_model_production = XGBRegressor(
-        objective="reg:squarederror",
-        n_estimators=iterations,
-        n_jobs=1,
-        **best,
-        tree_method="gpu_hist",
-    )
+    if gpu_flag is True:
+        xgb_model_production = XGBRegressor(
+            objective="reg:squarederror",
+            n_estimators=iterations,
+            n_jobs=1,
+            **best,
+            tree_method="gpu_hist",
+        )
+    else:
+        xgb_model_production = XGBRegressor(
+            objective="reg:squarederror",
+            n_estimators=iterations,
+            n_jobs=1,
+            **best,
+            tree_method="approx",
+        )
 
     xgb_model_production.fit(
         x_train,
@@ -145,7 +164,6 @@ def production_model_rmse_display(model):
 
 # Training results illustration functions
 def best_tree_illustration(model, fig_dpi: int, fig_save: bool = True):
-
     plt.rcParams["figure.dpi"] = fig_dpi
     plot_tree(
         model,
@@ -159,7 +177,6 @@ def best_tree_illustration(model, fig_dpi: int, fig_save: bool = True):
 def predict_plot_train_test(
     model, data_dict: dict, fig_dpi: int, fig_save: bool = True
 ):
-
     plt.rcParams["figure.dpi"] = fig_dpi
 
     x_train = data_dict["x_train"]
@@ -183,7 +200,6 @@ def predict_plot_train_test(
 def feat_importance_general(
     model, data_dict: dict, fig_dpi: int, fig_save: bool = True
 ):
-
     plt.rcParams["figure.dpi"] = fig_dpi
 
     x_train = data_dict["x_train"]
@@ -200,7 +216,6 @@ def feat_importance_general(
 def feat_importance_permut(
     model, data_dict: dict, fig_dpi: int, fig_save: bool = True
 ):
-
     plt.rcParams["figure.dpi"] = fig_dpi
 
     x_train = data_dict["x_train"]
@@ -224,7 +239,6 @@ def feat_importance_permut(
 
 # Most-influencing parameter
 def create_interpolation_for_mip(data_dict: dict, interval: int) -> DataFrame:
-
     x_train = data_dict["x_train"]
 
     minmax_df = pd.DataFrame(x_train.nunique(), columns=["nunique"])
@@ -245,7 +259,6 @@ def create_interpolation_for_mip(data_dict: dict, interval: int) -> DataFrame:
 def create_df_means_for_mip(
     data_dict: dict, df_interpolated: DataFrame
 ) -> DataFrame:
-
     x_train = data_dict["x_train"]
 
     df_mean_tmp = pd.DataFrame(x_train.mean(), columns=["mean"])
@@ -261,7 +274,6 @@ def create_df_means_for_mip(
 def mip_analysis(
     df_means: DataFrame, df_itp: DataFrame, model: str, save_res: bool = True
 ):
-
     # store data for further plot creation
     df_mip_res = pd.DataFrame()
     df_means_copy = df_means.copy()
@@ -286,7 +298,6 @@ def plot_mip_analysis_results(
     fig_size: tuple,
     fig_save: bool = True,
 ):
-
     col_list = list(df_itp.columns)
 
     fig = plt.figure(figsize=fig_size)

@@ -28,7 +28,6 @@ def fixture_input_df():
 
 
 def test_data_loading_should_return_expected():
-
     data = {
         "x1": [1, 1, 1, 10, 10],
         "x2": [2, 2, 2, 20, 20],
@@ -66,13 +65,12 @@ def test_data_loading_should_return_expected():
 def test_selected_feats_no_should_be_smaller_than_raw_input_feats(
     fixture_input_df,
 ):
-
     x_train, x_test, y_train, y_test = load_your_data(
         fixture_input_df, 600, "y"
     )
 
     x_selec_train, x_selec_test = feat_selec_with_borutashap(
-        x_train, x_test, y_train, 50
+        x_train, x_test, y_train, 50, False
     )
 
     assert len(x_train.columns) >= len(x_selec_train.columns)
@@ -80,7 +78,6 @@ def test_selected_feats_no_should_be_smaller_than_raw_input_feats(
 
 
 def test_interpolation_for_mip_should_result_as_expected():
-
     # This test is for src.dda.min_max_linspace_for_mip() running.
     data = {
         "x_train": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
