@@ -21,10 +21,10 @@ from src.dda import (
 
 # Load data and input feature selection for modelling
 data_dir = "src/"
-data_file = "rawdata_analysis_employment.csv"
+data_file = "RStuR_Enrol.csv"
 
 df = pd.read_csv(data_dir + data_file, index_col=[0, 1, 2, 3])
-x_train, x_test, y_train, y_test = load_your_data(df, 268, "Employment_rates")
+x_train, x_test, y_train, y_test = load_your_data(df, 268, "REnrol_StuR")
 
 x_train_boruta_shap, x_test_boruta_shap = feat_selec_with_borutashap(
     x_train, x_test, y_train, 50, False
