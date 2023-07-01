@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 from pandas.testing import assert_frame_equal, assert_series_equal
@@ -7,6 +8,7 @@ from src.dda import (
     feat_selec_with_borutashap,
     create_interpolation_for_mip,
     create_df_means_for_mip,
+    create_random_dataframes,
 )
 
 
@@ -25,6 +27,16 @@ def fixture_input_df():
     )
 
     return df
+
+
+@pytest.fixture
+def df_interpolated():
+    data = {
+        "column1": [1, 2, 3, 4, 5],
+        "column2": [5, 6, 7, 8, 9],
+        "column3": [3, 4, 5, 6, 7],
+    }
+    return pd.DataFrame(data)
 
 
 def test_data_loading_should_return_expected():
@@ -151,3 +163,23 @@ def test_create_means_for_mip_should_result_as_expected():
 
     assert_frame_equal(df_itp, df_expected_itp)
     assert_frame_equal(df_means, df_expected_means)
+
+
+def test_create_random_dataframes(df_interpolated):
+    n = 10000
+    create_random_dataframes(df_interpolated, n=n)
+
+    for col in df_interpolated.columns:
+        filename = f"df_randomized_{col}.csv"
+        assert os.path.exists(filename)
+
+        df = pd.read_csv(filename)
+        assert df.shape == (
+            n * df_interpolated.shape[0],
+            len(df_interpolated.columns),
+        )
+        assert np.all(
+            df[col].values == np.repeat(df_interpolated[col].values, n)
+        )
+
+        os.remove(filename)
