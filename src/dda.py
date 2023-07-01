@@ -313,3 +313,33 @@ def plot_mip_analysis_results(
             cwd + "/fig_mip_results.png",
             dpi=fig_dpi,
         )
+
+
+# randomized simulation
+
+
+def create_random_dataframes(df_interpolated: DataFrame, n: int) -> None:
+    interval = df_interpolated.shape[0]
+
+    df_rand = pd.DataFrame(
+        {
+            column: np.random.uniform(
+                df_interpolated[column].min(), df_interpolated[column].max(), n
+            )
+            for column in df_interpolated.columns
+        }
+    )
+    df_rand_tmp = pd.concat([df_rand] * interval, ignore_index=True)
+    df_interval_tmp = pd.DataFrame(
+        {
+            column: np.repeat(df_interpolated[column].values, n)
+            for column in df_interpolated.columns
+        }
+    )
+    df_frames = [
+        df_rand_tmp.copy().assign(**{column: df_interval_tmp[column]})
+        for column in df_interpolated.columns
+    ]
+    for i, df in enumerate(df_frames):
+        filename = f"df_randomized_{df_interpolated.columns[i]}.csv"
+        df.to_csv(filename, index=False)
