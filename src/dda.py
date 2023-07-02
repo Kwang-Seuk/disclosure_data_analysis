@@ -2,6 +2,7 @@
 import os
 import pandas as pd
 import numpy as np
+import math
 from pandas.core.frame import DataFrame
 from pandas.core.series import Series
 from matplotlib import pyplot as plt
@@ -95,9 +96,9 @@ def hyper_parameters_objective(hpspace: dict):
         subsample=hpspace["subsample"],
         colsample_bytree=hpspace["colsample_bytree"],
         scale_pos_weight=hpspace["scale_pos_weight"],
-        tree_method="gpu_hist",
-        n_jobs=-1,
-    )
+        n_jobs=1,
+    )  # tree_method="gpu_hist",
+
     best_score = cross_val_score(
         xgb_hpo,
         hpspace["x_train"],
@@ -343,3 +344,45 @@ def create_random_dataframes(df_interpolated: DataFrame, n: int) -> None:
     for i, df in enumerate(df_frames):
         filename = f"df_randomized_{df_interpolated.columns[i]}.csv"
         df.to_csv(filename, index=False)
+
+
+def draw_scatter_graphs_from_csv(
+    csv_file: str, control_var: str, x_var: str, y_var: str
+) -> None:
+    df = pd.read_csv(csv_file)
+
+    interval = df[control_var].nunique()
+
+    # Calculate subplot grid dimensions
+    grid_size = math.ceil(math.sqrt(interval))
+
+    fig, axs = plt.subplots(grid_size, grid_size, figsize=(15, 15))
+    axs = axs.ravel()  # Flatten axis array
+
+    # Determine dot size based on dataframe size
+    dot_size = max(5, 5000 / len(df))
+
+    for subplot_index, unique_val in enumerate(df[control_var].unique()):
+        subset = df[df[control_var] == unique_val]
+        scatter = axs[subplot_index].scatter(
+            subset[x_var],
+            subset[y_var],
+            c=subset["y"],
+            cmap="jet",
+            s=dot_size,
+        )
+        fig.colorbar(scatter, ax=axs[subplot_index])
+        axs[subplot_index].set_title(f"{control_var} = {unique_val}")
+
+        if (subplot_index + grid_size) // grid_size >= grid_size:
+            axs[subplot_index].set_xlabel(x_var)
+
+        if subplot_index % grid_size == 0:
+            axs[subplot_index].set_ylabel(y_var)
+
+    # Remove unused subplots
+    for i in range(interval, grid_size * grid_size):
+        fig.delaxes(axs[i])
+
+    plt.tight_layout()
+    plt.show()

@@ -13,9 +13,11 @@ from src.dda import (
     feat_importance_permut,
     create_interpolation_for_mip,
     create_df_means_for_mip,
+    create_random_dataframes,
     mip_analysis,
     plot_mip_analysis_results,
     predict_plot_train_test,
+    draw_scatter_graphs_from_csv,
 )
 
 
@@ -81,4 +83,13 @@ df_mip_res_employ = mip_analysis(
 )
 plot_mip_analysis_results(
     df_itp_employ, df_mip_res_employ, 150, (10, 10), False
+)
+
+# Simulation (2): Random dataframes analysis
+create_random_dataframes(df_itp_employ, 1000)
+draw_scatter_graphs_from_csv(
+    "df_randomized_LibSpen_pStuE.csv",
+    "LibSpen_pStuE",
+    "NoStueE_Cap",
+    "Rfac_pStuE",
 )
