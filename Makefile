@@ -37,11 +37,11 @@ lint:
 
 .PHONY: qtconsole
 qtconsole:
-	jupyter qtconsole --kernel=disclosure &
+	jupyter qtconsole --kernel=disclosure_data_analysis &
 
 .PHONY: jupyter
 jupyter:
-	jupyter notebook --kernel=disclosure &
+	jupyter notebook --kernel=disclosure_data_analysis &
 
 .PHONY: clean
 clean:
