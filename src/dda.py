@@ -3,9 +3,11 @@ import os
 import pandas as pd
 import numpy as np
 import math
+from typing import Union
 from pandas.core.frame import DataFrame
 from pandas.core.series import Series
 from matplotlib import pyplot as plt
+from scipy.interpolate import griddata
 from sklearn.model_selection import train_test_split
 from sklearn.inspection import permutation_importance
 from sklearn.model_selection import cross_val_score
@@ -34,7 +36,6 @@ def feat_selec_with_borutashap(
     sel_trial: int,
     gpu_flag: bool,
 ) -> DataFrame:
-
     if gpu_flag is True:
         xgbm_pre = XGBRegressor(
             objective="reg:squarederror", tree_method="gpu_hist"
@@ -317,8 +318,6 @@ def plot_mip_analysis_results(
 
 
 # randomized simulation
-
-
 def create_random_dataframes(df_interpolated: DataFrame, n: int) -> None:
     interval = df_interpolated.shape[0]
 
@@ -344,6 +343,27 @@ def create_random_dataframes(df_interpolated: DataFrame, n: int) -> None:
     for i, df in enumerate(df_frames):
         filename = f"df_randomized_{df_interpolated.columns[i]}.csv"
         df.to_csv(filename, index=False)
+
+
+def random_simulation(
+    input_csv: str, model: Union[XGBRegressor, str], save_res: bool = True
+) -> None:
+    df_rand = pd.read_csv(input_csv)
+
+    if isinstance(model, str):
+        loaded_model = XGBRegressor()
+        loaded_model.load_model(model)
+        model = loaded_model
+
+    rand_pred = model.predict(df_rand)
+    df_rand["y"] = rand_pred.tolist()
+    if save_res is True:
+        cwd = os.getcwd()
+        base = os.path.basename(input_csv)
+        filename = os.path.splitext(base)[0]
+        df_rand.to_csv(
+            cwd + "/random_simulation_res_" + filename + ".csv", index=False
+        )
 
 
 def draw_scatter_graphs_from_csv(
@@ -378,6 +398,44 @@ def draw_scatter_graphs_from_csv(
             axs[subplot_index].set_xlabel(x_var)
 
         if subplot_index % grid_size == 0:
+            axs[subplot_index].set_ylabel(y_var)
+
+    # Remove unused subplots
+    for i in range(interval, grid_size * grid_size):
+        fig.delaxes(axs[i])
+
+    plt.tight_layout()
+    plt.show()
+
+
+def draw_contour_graphs_from_csv(
+    csv_file: str, control_var: str, x_var: str, y_var: str
+) -> None:
+    df = pd.read_csv(csv_file)
+    interval = df[control_var].nunique()
+
+    # Calculate subplot grid dimensions
+    grid_size = math.ceil(math.sqrt(interval))
+
+    fig, axs = plt.subplots(grid_size, grid_size, figsize=(15, 15))
+    axs = axs.ravel()  # Flatten axis array
+
+    for subplot_index, unique_val in enumerate(df[control_var].unique()):
+        subset = df[df[control_var] == unique_val]
+        contour = axs[subplot_index].tricontourf(
+            subset[x_var], subset[y_var], subset["y"], cmap="jet"
+        )
+        fig.colorbar(contour, ax=axs[subplot_index])
+        axs[subplot_index].set_title(f"{control_var} = {unique_val}")
+
+        if (
+            subplot_index // grid_size == grid_size - 1
+        ):  # Only label x-axis on the bottom-most subplots
+            axs[subplot_index].set_xlabel(x_var)
+
+        if (
+            subplot_index % grid_size == 0
+        ):  # Only label y-axis on the left-most subplots
             axs[subplot_index].set_ylabel(y_var)
 
     # Remove unused subplots

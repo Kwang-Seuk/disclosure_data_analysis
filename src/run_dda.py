@@ -17,7 +17,9 @@ from src.dda import (
     mip_analysis,
     plot_mip_analysis_results,
     predict_plot_train_test,
+    random_simulation,
     draw_scatter_graphs_from_csv,
+    draw_contour_graphs_from_csv,
 )
 
 
@@ -87,8 +89,15 @@ plot_mip_analysis_results(
 
 # Simulation (2): Random dataframes analysis
 create_random_dataframes(df_itp_employ, 1000)
+random_simulation("df_randomized_LibSpen_pStuE.csv", xgb_production_model)
 draw_scatter_graphs_from_csv(
-    "df_randomized_LibSpen_pStuE.csv",
+    "random_simulation_res_df_randomized_LibSpen_pStuE.csv",
+    "LibSpen_pStuE",
+    "NoStueE_Cap",
+    "Rfac_pStuE",
+)
+draw_contour_graphs_from_csv(
+    "random_simulation_res_df_randomized_LibSpen_pStuE.csv",
     "LibSpen_pStuE",
     "NoStueE_Cap",
     "Rfac_pStuE",
