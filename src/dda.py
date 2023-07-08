@@ -3,22 +3,67 @@ import os
 import pandas as pd
 import numpy as np
 import math
-from typing import Union
+from hyperopt import fmin, tpe
+from typing import Union, Dict, Tuple
 from pandas.core.frame import DataFrame
 from pandas.core.series import Series
 from matplotlib import pyplot as plt
-from scipy.interpolate import griddata
 from sklearn.model_selection import train_test_split
 from sklearn.inspection import permutation_importance
 from sklearn.model_selection import cross_val_score
 from BorutaShap import BorutaShap
 from xgboost import XGBRegressor, plot_tree
+from xgboost import cv as xgb_cv
 
 
-# Model development functions
-def load_your_data(
+# Fuctions for "step1_prepare_modelling_data"
+def load_and_check_data(
+    data_dir: str, data_file: str, round_no: int = 3
+) -> DataFrame:
+    df = pd.read_csv(data_dir + data_file, index_col=[0, 1, 2, 3])
+
+    # 1. Check for NA values and replace them with column mean
+    df.fillna(df.mean(), inplace=True)
+
+    # 2. Check for excessively long decimal places and round
+    df = df.round(round_no)
+
+    # 3. Check for columns with only one unique value (0 or any other value)
+    for column in df.columns:
+        if df[column].nunique() == 1:
+            print(f"Warning: Column {column} has only one unique value.")
+            print("It's recommended to remove it.")
+
+    # 4. Check for non-numeric data
+    for column in df.columns:
+        if not pd.api.types.is_numeric_dtype(df[column]):
+            print(f"Warning: Column {column} is not numeric.")
+            print("Please check the values.")
+
+    print("The provided csv file was successfully loaded.")
+    return df
+
+
+def prepare_train_test_data(
     df: DataFrame, train_size: int, target_var: str
 ) -> DataFrame:
+    # Check for the input parameters
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError("df should be a DataFrame")
+
+    if (
+        not isinstance(train_size, int)
+        or train_size <= 0
+        or train_size >= len(df)
+    ):
+        raise ValueError(
+            "train_size should be a positive integer, smaller than rows no. in df"
+        )
+
+    if target_var not in df.columns:
+        raise ValueError("target_var should be one of the columns in df")
+
+    # Data spliting
     df_model = df.copy()
     y = df_model[target_var]
     X = df_model.drop([target_var], axis=1)
@@ -26,17 +71,18 @@ def load_your_data(
         X, y, train_size=train_size, shuffle=False
     )
 
+    print("Data split was completed successfully.")
     return X_train, X_test, y_train, y_test
 
 
+# Functions for "step2_develop_your_model"
 def feat_selec_with_borutashap(
     x_train: DataFrame,
     x_test: DataFrame,
     y_train: Series,
     sel_trial: int,
-    gpu_flag: bool,
+    gpu_flag: bool = False,
 ) -> DataFrame:
-
     if gpu_flag is True:
         xgbm_pre = XGBRegressor(
             objective="reg:squarederror", tree_method="gpu_hist"
@@ -85,40 +131,69 @@ def feat_selec_with_borutashap(
     return x_train_sel, x_test_sel
 
 
-def hyper_parameters_objective(hpspace: dict):
+def hyper_parameters_objective(
+    params: dict, x_train: DataFrame, y_train: Series, gpu_flag: bool = False
+):
+    tree_method = "gpu_hist" if gpu_flag else "auto"
     xgb_hpo = XGBRegressor(
         objective="reg:squarederror",
         n_estimators=1000,
-        max_depth=int(hpspace["max_depth"]),
-        gamma=hpspace["gamma"],
-        reg_alpha=hpspace["reg_alpha"],
-        reg_lambda=hpspace["reg_lambda"],
-        eta=hpspace["eta"],
-        min_child_weight=hpspace["min_child_weight"],
-        subsample=hpspace["subsample"],
-        colsample_bytree=hpspace["colsample_bytree"],
-        scale_pos_weight=hpspace["scale_pos_weight"],
-        tree_method="gpu_hist",
+        max_depth=int(params["max_depth"]),
+        gamma=params["gamma"],
+        reg_alpha=params["reg_alpha"],
+        reg_lambda=params["reg_lambda"],
+        eta=params["eta"],
+        min_child_weight=params["min_child_weight"],
+        subsample=params["subsample"],
+        colsample_bytree=params["colsample_bytree"],
+        scale_pos_weight=params["scale_pos_weight"],
+        tree_method=tree_method,
         n_jobs=-1,
     )
     best_score = cross_val_score(
         xgb_hpo,
-        hpspace["x_train"],
-        hpspace["y_train"],
+        x_train,
+        y_train,
         scoring="neg_mean_squared_error",
         cv=10,
+        error_score="raise",
     ).mean()
     loss = 1 - best_score
     return loss
 
 
+def hyper_parameters_tuning(
+    params: Dict,
+    x_train: pd.DataFrame,
+    y_train: pd.Series,
+    max_evals: int = 50,
+    random_state: int = 777,
+) -> Dict:
+    best = fmin(
+        fn=lambda p: hyper_parameters_objective(p, x_train, y_train),
+        space=params,
+        max_evals=max_evals,
+        rstate=np.random.default_rng(random_state),
+        algo=tpe.suggest,
+    )
+
+    assert isinstance(best, dict), "best must be a dictionary"
+
+    print("The optimized hyper_parameters are: ")
+    print(best)
+
+    return best
+
+
 def develop_production_model(
-    data_dict: dict, iterations: int, best: dict, gpu_flag: bool
+    train_data: Tuple[pd.DataFrame, pd.Series],
+    test_data: Tuple[pd.DataFrame, pd.Series],
+    best: dict,
+    iterations: int,
+    gpu_flag: bool = False,
 ):
-    x_train = data_dict["x_train"]
-    x_test = data_dict["x_test"]
-    y_train = data_dict["y_train"]
-    y_test = data_dict["y_test"]
+    x_train, y_train = train_data
+    x_test, y_test = test_data
 
     best["max_depth"] = int(best["max_depth"])
 
@@ -153,6 +228,21 @@ def develop_production_model(
 
 def production_model_rmse_display(model):
     learning_res = model.evals_result()
+
+    assert isinstance(learning_res, dict), "learning_res must be a dictionary"
+    assert (
+        "validation_0" in learning_res
+    ), "learning_res should contain 'validation_0'"
+    assert (
+        "validation_1" in learning_res
+    ), "learning_res should contain 'validation_1'"
+    assert isinstance(
+        learning_res["validation_0"]["rmse"], list
+    ), "validation_0 rmse should be a list"
+    assert isinstance(
+        learning_res["validation_1"]["rmse"], list
+    ), "validation_1 rmse should be a list"
+
     epochs = len(learning_res["validation_0"]["rmse"])
     x_axis = range(0, epochs)
 
@@ -165,64 +255,81 @@ def production_model_rmse_display(model):
     plt.show()
 
 
-# Training results illustration functions
-def best_tree_illustration(model, fig_dpi: int, fig_save: bool = True):
+# Functions for "step3_model_performance_test"
+def best_tree_illustration(model: XGBRegressor, fig_dpi: int, fig_save: bool):
+    plt.figure()
     plt.rcParams["figure.dpi"] = fig_dpi
     plot_tree(
         model,
         num_trees=model.get_booster().best_iteration,
     )
+    plt.show()
     if fig_save is True:
         cwd = os.getcwd()
         plt.savefig(cwd + "/fig_test_tree.jpg", dpi=fig_dpi)
+    plt.close()
 
 
 def predict_plot_train_test(
-    model, data_dict: dict, fig_dpi: int, fig_save: bool = True
+    model: XGBRegressor,
+    train_data: Tuple[DataFrame, Series],
+    test_data: Tuple[DataFrame, Series],
+    fig_dpi: int = 300,
+    fig_save: bool = False,
 ):
+    plt.figure()
     plt.rcParams["figure.dpi"] = fig_dpi
 
-    x_train = data_dict["x_train"]
-    x_test = data_dict["x_test"]
-    y_train = data_dict["y_train"]
-    y_test = data_dict["y_test"]
+    x_train, y_train = train_data
+    x_test, y_test = test_data
 
     tr_pred = model.predict(x_train)
     plt.scatter(y_train, tr_pred)
 
     tst_pred = model.predict(x_test)
     plt.scatter(y_test, tst_pred)
+    plt.show()
 
     if fig_save is True:
         cwd = os.getcwd()
         plt.savefig(
             cwd + "/fig_train_test_prediction_results.png", dpi=fig_dpi
         )
+    plt.close()
 
 
 def feat_importance_general(
-    model, data_dict: dict, fig_dpi: int, fig_save: bool = True
+    model: XGBRegressor,
+    train_data: Tuple[DataFrame, Series],
+    fig_dpi: int = 300,
+    fig_save: bool = False,
 ):
+    plt.figure()
     plt.rcParams["figure.dpi"] = fig_dpi
 
-    x_train = data_dict["x_train"]
+    x_train, x_test = train_data
     feature_names = np.array(x_train.columns)
     sorted_idx = model.feature_importances_.argsort()
     plt.barh(feature_names[sorted_idx], model.feature_importances_[sorted_idx])
     plt.xlabel("XGBoost Feature Importance")
+    plt.show()
 
     if fig_save is True:
         cwd = os.getcwd()
         plt.savefig(cwd + "/fig_feature_importance.png", dpi=fig_dpi)
+    plt.close()
 
 
 def feat_importance_permut(
-    model, data_dict: dict, fig_dpi: int, fig_save: bool = True
+    model: XGBRegressor,
+    train_data: Tuple[DataFrame, Series],
+    fig_dpi: int = 300,
+    fig_save: bool = False,
 ):
+    plt.figure()
     plt.rcParams["figure.dpi"] = fig_dpi
 
-    x_train = data_dict["x_train"]
-    y_train = data_dict["y_train"]
+    x_train, y_train = train_data
 
     perm_importance = permutation_importance(model, x_train, y_train)
     feature_names = np.array(x_train.columns)
@@ -231,6 +338,7 @@ def feat_importance_permut(
         feature_names[sorted_idx], perm_importance.importances_mean[sorted_idx]
     )
     plt.xlabel("Permutation Importance")
+    plt.show()
 
     if fig_save is True:
         cwd = os.getcwd()
@@ -238,11 +346,14 @@ def feat_importance_permut(
             cwd + "/fig_feature_importance_permuted.png",
             dpi=fig_dpi,
         )
+    plt.close()
 
 
 # Most-influencing parameter
-def create_interpolation_for_mip(data_dict: dict, interval: int) -> DataFrame:
-    x_train = data_dict["x_train"]
+def create_interpolation_for_mip(
+    x_train: DataFrame, interval: int
+) -> DataFrame:
+    assert isinstance(interval, int), "interval must be an integer"
 
     minmax_df = pd.DataFrame(x_train.nunique(), columns=["nunique"])
     minmax_df["min"] = x_train.min()
@@ -260,10 +371,8 @@ def create_interpolation_for_mip(data_dict: dict, interval: int) -> DataFrame:
 
 
 def create_df_means_for_mip(
-    data_dict: dict, df_interpolated: DataFrame
+    x_train: DataFrame, df_interpolated: DataFrame
 ) -> DataFrame:
-    x_train = data_dict["x_train"]
-
     df_mean_tmp = pd.DataFrame(x_train.mean(), columns=["mean"])
     df_means = pd.DataFrame(
         columns=list(x_train.columns), index=range(len(df_interpolated))
@@ -275,7 +384,10 @@ def create_df_means_for_mip(
 
 
 def mip_analysis(
-    df_means: DataFrame, df_itp: DataFrame, model: str, save_res: bool = True
+    df_means: DataFrame,
+    df_itp: DataFrame,
+    model: XGBRegressor,
+    save_res: bool = True,
 ):
     # store data for further plot creation
     df_mip_res = pd.DataFrame()
@@ -301,6 +413,7 @@ def plot_mip_analysis_results(
     fig_size: tuple,
     fig_save: bool = True,
 ):
+    plt.figure()
     col_list = list(df_itp.columns)
 
     fig = plt.figure(figsize=fig_size)
@@ -309,6 +422,7 @@ def plot_mip_analysis_results(
         ax.plot(df_itp[col_name], df_mip_res[col_name], "r-")
         ax.set_title(col_name)
         fig.tight_layout()
+    plt.show()
 
     if fig_save is True:
         cwd = os.getcwd()
@@ -316,6 +430,7 @@ def plot_mip_analysis_results(
             cwd + "/fig_mip_results.png",
             dpi=fig_dpi,
         )
+    plt.close()
 
 
 # randomized simulation
@@ -348,7 +463,7 @@ def create_random_dataframes(df_interpolated: DataFrame, n: int) -> None:
 
 def random_simulation(
     input_csv: str, model: Union[XGBRegressor, str], save_res: bool = True
-) -> None:
+) -> DataFrame:
     df_rand = pd.read_csv(input_csv)
 
     if isinstance(model, str):
@@ -358,6 +473,7 @@ def random_simulation(
 
     rand_pred = model.predict(df_rand)
     df_rand["y"] = rand_pred.tolist()
+
     if save_res is True:
         cwd = os.getcwd()
         base = os.path.basename(input_csv)
@@ -366,10 +482,13 @@ def random_simulation(
             cwd + "/random_simulation_res_" + filename + ".csv", index=False
         )
 
+    return df_rand
+
 
 def draw_scatter_graphs_from_csv(
     csv_file: str, control_var: str, x_var: str, y_var: str
 ) -> None:
+    plt.figure()
     df = pd.read_csv(csv_file)
 
     interval = df[control_var].nunique()
@@ -407,11 +526,13 @@ def draw_scatter_graphs_from_csv(
 
     plt.tight_layout()
     plt.show()
+    plt.close()
 
 
 def draw_contour_graphs_from_csv(
     csv_file: str, control_var: str, x_var: str, y_var: str
 ) -> None:
+    plt.figure()
     df = pd.read_csv(csv_file)
     interval = df[control_var].nunique()
 
@@ -445,3 +566,4 @@ def draw_contour_graphs_from_csv(
 
     plt.tight_layout()
     plt.show()
+    plt.close()
