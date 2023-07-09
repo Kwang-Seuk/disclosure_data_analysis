@@ -40,7 +40,6 @@ def load_and_check_data(
             print(f"Warning: Column {column} is not numeric.")
             print("Please check the values.")
 
-    print("The provided csv file was successfully loaded.")
     return df
 
 
@@ -71,7 +70,6 @@ def prepare_train_test_data(
         X, y, train_size=train_size, shuffle=False
     )
 
-    print("Data split was completed successfully.")
     return X_train, X_test, y_train, y_test
 
 
@@ -263,10 +261,11 @@ def best_tree_illustration(model: XGBRegressor, fig_dpi: int, fig_save: bool):
         model,
         num_trees=model.get_booster().best_iteration,
     )
-    plt.show()
+    plt.tight_layout()
     if fig_save is True:
         cwd = os.getcwd()
         plt.savefig(cwd + "/fig_test_tree.jpg", dpi=fig_dpi)
+    plt.show()
     plt.close()
 
 
@@ -284,17 +283,20 @@ def predict_plot_train_test(
     x_test, y_test = test_data
 
     tr_pred = model.predict(x_train)
-    plt.scatter(y_train, tr_pred)
+    plt.scatter(y_train, tr_pred, label="Training data")
 
     tst_pred = model.predict(x_test)
-    plt.scatter(y_test, tst_pred)
-    plt.show()
-
+    plt.scatter(y_test, tst_pred, label="Testing data")
+    plt.xlabel("Observed y data")
+    plt.ylabel("Predicted y data")
+    plt.legend()
+    plt.tight_layout()
     if fig_save is True:
         cwd = os.getcwd()
         plt.savefig(
             cwd + "/fig_train_test_prediction_results.png", dpi=fig_dpi
         )
+    plt.show()
     plt.close()
 
 
@@ -312,11 +314,11 @@ def feat_importance_general(
     sorted_idx = model.feature_importances_.argsort()
     plt.barh(feature_names[sorted_idx], model.feature_importances_[sorted_idx])
     plt.xlabel("XGBoost Feature Importance")
-    plt.show()
-
+    plt.tight_layout()
     if fig_save is True:
         cwd = os.getcwd()
         plt.savefig(cwd + "/fig_feature_importance.png", dpi=fig_dpi)
+    plt.show()
     plt.close()
 
 
@@ -338,14 +340,14 @@ def feat_importance_permut(
         feature_names[sorted_idx], perm_importance.importances_mean[sorted_idx]
     )
     plt.xlabel("Permutation Importance")
-    plt.show()
-
+    plt.tight_layout()
     if fig_save is True:
         cwd = os.getcwd()
         plt.savefig(
             cwd + "/fig_feature_importance_permuted.png",
             dpi=fig_dpi,
         )
+    plt.show()
     plt.close()
 
 
@@ -421,8 +423,12 @@ def plot_mip_analysis_results(
         ax = fig.add_subplot(5, 5, i + 1)
         ax.plot(df_itp[col_name], df_mip_res[col_name], "r-")
         ax.set_title(col_name)
+
+        # Check if it's the first column
+        if i % 5 == 0:
+            ax.set_ylabel("Predicted result")
+
         fig.tight_layout()
-    plt.show()
 
     if fig_save is True:
         cwd = os.getcwd()
@@ -430,10 +436,11 @@ def plot_mip_analysis_results(
             cwd + "/fig_mip_results.png",
             dpi=fig_dpi,
         )
+    plt.show()
     plt.close()
 
 
-# randomized simulation
+# randomized dataframes creation
 def create_random_dataframes(df_interpolated: DataFrame, n: int) -> None:
     interval = df_interpolated.shape[0]
 
@@ -461,6 +468,7 @@ def create_random_dataframes(df_interpolated: DataFrame, n: int) -> None:
         df.to_csv(filename, index=False)
 
 
+# Random simulation
 def random_simulation(
     input_csv: str, model: Union[XGBRegressor, str], save_res: bool = True
 ) -> DataFrame:

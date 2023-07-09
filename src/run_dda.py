@@ -1,4 +1,8 @@
 # Loading modules
+import sys
+
+sys.path.insert(0, "/home/kjeong/localgit/disclosure_data_analysis/")
+import os
 from typing import Tuple, Dict, Union
 from pandas.core.frame import DataFrame
 from pandas.core.series import Series
@@ -36,24 +40,8 @@ from src.validate import (
     validate_saved_csv,
 )
 
-# Preparation for modelling
-data_dir = "src/"
-data_file = "RStuR_Enrol.csv"
-hpspace = {
-    "max_depth": hp.quniform("max_depth", 3, 10, 1),
-    "gamma": hp.uniform("gamma", 0, 10),
-    "reg_alpha": hp.quniform("reg_alpha", 0, 0.5, 0.1),
-    "reg_lambda": hp.uniform("reg_lambda", 0, 1),
-    "eta": hp.uniform("eta", 0, 1),
-    "min_child_weight": hp.quniform("min_child_weight", 0, 2, 0.1),
-    "subsample": hp.uniform("subsample", 0.5, 1),
-    "colsample_bytree": hp.uniform("colsample_bytree", 0.1, 1),
-    "scale_pos_weight": hp.uniform("scale_pos_weight", 0.1, 1),
-}
 
-# Pipeline
-
-
+# Pipeline functions
 def step1_prepare_modelling_data(
     data_dir: str, data_file: str
 ) -> Tuple[DataFrame, DataFrame, Series, Series]:
@@ -62,6 +50,7 @@ def step1_prepare_modelling_data(
         df, 268, "REnrol_StuR"
     )
     validate_train_test_data(x_train, x_test, y_train, y_test)
+    print("The data was successfully splitted into dataframes!")
     return (x_train, x_test, y_train, y_test)
 
 
@@ -89,6 +78,7 @@ def step2_develop_your_model(
     )
     production_model_rmse_display(xgb_production_model)
     validate_production_model(xgb_production_model)
+    print("Production model was trained successfully!")
 
     return xgb_production_model, x_train_boruta_shap, x_test_boruta_shap
 
@@ -113,7 +103,7 @@ def step4_mip_analysis(
     fig_dpi: int = 300,
     fig_size: Tuple = (10, 10),
     save_res: bool = True,
-) -> None:
+) -> DataFrame:
     df_itp = create_interpolation_for_mip(x_train, interval)
     validate_df_interpolated(df_itp, x_train, interval)
 
@@ -124,30 +114,51 @@ def step4_mip_analysis(
     validate_mip_analysis(df_mip_res, df_means, df_itp)
 
     plot_mip_analysis_results(df_itp, df_mip_res, fig_dpi, fig_size, save_res)
+    return df_itp
 
 
-def step5_random_simulation(
+def step5_random_data_generation(df_interpolated: DataFrame, n: int) -> None:
+    create_random_dataframes(df_interpolated, n)
+    validate_create_random_dataframes(df_interpolated, n)
+    print("Random dataframes were created successfully!")
+
+
+def step6_random_simulation(
     input_csv: str,
     model: Union[XGBRegressor, str],
-    n: int,
-    df_itp_employ: DataFrame,
     control_var: str,
     x_var: str,
     y_var: str,
 ) -> None:
-    create_random_dataframes(df_itp_employ, n)
-    validate_create_random_dataframes(df_itp_employ, n)
 
     validate_model_loading(model)
     df_rand = random_simulation(input_csv, model)
     validate_saved_csv(input_csv, df_rand)
 
+    # Extract the base filename without extension
+    base_filename = os.path.splitext(os.path.basename(input_csv))[0]
     draw_scatter_graphs_from_csv(
-        "random_simulation_res_" + input_csv, control_var, x_var, y_var
+        f"random_simulation_res_{base_filename}.csv", control_var, x_var, y_var
     )
     draw_contour_graphs_from_csv(
-        "random_simulation_res_" + input_csv, control_var, x_var, y_var
+        f"random_simulation_res_{base_filename}.csv", control_var, x_var, y_var
     )
+
+
+# Run the main pipeline
+data_dir = "src/"
+data_file = "RStuR_Enrol.csv"
+hpspace = {
+    "max_depth": hp.quniform("max_depth", 3, 10, 1),
+    "gamma": hp.uniform("gamma", 0, 10),
+    "reg_alpha": hp.quniform("reg_alpha", 0, 0.5, 0.1),
+    "reg_lambda": hp.uniform("reg_lambda", 0, 1),
+    "eta": hp.uniform("eta", 0, 1),
+    "min_child_weight": hp.quniform("min_child_weight", 0, 2, 0.1),
+    "subsample": hp.uniform("subsample", 0.5, 1),
+    "colsample_bytree": hp.uniform("colsample_bytree", 0.1, 1),
+    "scale_pos_weight": hp.uniform("scale_pos_weight", 0.1, 1),
+}
 
 
 def main_pipeline(
@@ -159,35 +170,32 @@ def main_pipeline(
     )
 
     # Step 2: Develop your model
-    (
-        xgb_production_model,
-        x_train_boruta_shap,
-        x_test_boruta_shap,
-    ) = step2_develop_your_model(
+    (xgb_production_model, x_train_sel, x_test_sel) = step2_develop_your_model(
         x_train, x_test, y_train, y_test, hpspace, gpu_flag=False
     )
 
     # Step 3: Model performance test
     step3_model_performance_test(
         xgb_production_model,
-        (x_train_boruta_shap, y_train),
-        (x_test_boruta_shap, y_test),
+        (x_train_sel, y_train),
+        (x_test_sel, y_test),
+        300,
+        True,
     )
 
     # Step 4: MIP analysis
-    step4_mip_analysis(x_train_boruta_shap, xgb_production_model)
-
-    # Step 5: Random simulation
-    step5_random_simulation(
-        input_csv,
-        xgb_production_model,
-        10,
-        x_train_boruta_shap,
-        "control_var",
-        "x_var",
-        "y_var",
+    df_interpolated = step4_mip_analysis(
+        x_train_sel, xgb_production_model, 11, 300, (10, 10), True
     )
 
+    # Step 5: Random data generation
+    step5_random_data_generation(df_interpolated, 1000)
 
-if __name__ == "__main__":
-    main_pipeline()
+    # Step 6: Random simulation
+    step6_random_simulation(
+        "df_randomized_NoStuR.csv",
+        xgb_production_model,
+        "NoStuR",
+        "LibSpen_pStuE",
+        "Rfac_pStuE",
+    )
